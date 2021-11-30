@@ -35,6 +35,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define PERIOD 0.1
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -49,7 +50,7 @@ TIM_HandleTypeDef htim4;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-volatile _Bool TENTH,SECOND = 0;
+volatile _Bool TENTH, SECOND = 0;
 volatile int correctlySentData = 1;
 /* USER CODE END PV */
 
@@ -76,8 +77,8 @@ int main(void)
 {
   /* USER CODE BEGIN 1 */
   char message[32];
-  IKS01A3_MOTION_SENSOR_Axes_t axes;
-  volatile int32_t v = 0;
+  IKS01A3_MOTION_SENSOR_Axes_t axes_ACCELERO, axes_GYRO;
+  volatile int32_t lin_vel_y = 0, ang_vel_x = 0, ang_pos_x = 0;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -104,8 +105,12 @@ int main(void)
   /* USER CODE BEGIN 2 */
   HAL_TIM_Base_Start_IT(&htim3);
   HAL_TIM_Base_Start_IT(&htim4);
-  IKS01A3_MOTION_SENSOR_Init(1,MOTION_ACCELERO);
-  IKS01A3_MOTION_SENSOR_Enable(1,MOTION_ACCELERO);
+  // Accelero
+  IKS01A3_MOTION_SENSOR_Init(1, MOTION_ACCELERO);
+  IKS01A3_MOTION_SENSOR_Enable(1, MOTION_ACCELERO);
+  // Gyro
+  IKS01A3_MOTION_SENSOR_Init(0, MOTION_GYRO);
+  IKS01A3_MOTION_SENSOR_Enable(0, MOTION_GYRO);
 
   // Sensor Configuration
   IKS01A3_MOTION_SENSOR_Write_Register(1,0x20,(uint8_t)100); //01100100: ODR=200 Hz, High-Performance Mode
@@ -118,16 +123,23 @@ int main(void)
   {
 	if(TENTH){
 		TENTH = 0;
-		if(!IKS01A3_MOTION_SENSOR_GetAxes(1, MOTION_ACCELERO, &axes)){
-			v = v + axes.y*0.1;
+		// Integrates the linear acceleration to get the velocity
+		if(!IKS01A3_MOTION_SENSOR_GetAxes(1, MOTION_ACCELERO, &axes_ACCELERO)) {
+			lin_vel_y = lin_vel_y + axes_ACCELERO.y*PERIOD;
+		}
+		// Integrate the angular acceleration to get the angular velocity
+		if(!IKS01A3_MOTION_SENSOR_GetAxes(0, MOTION_GYRO, &axes_GYRO)) {
+			ang_vel_x = ang_vel_x + axes_GYRO.x*PERIOD;
+			ang_pos_x = ang_pos_x + ang_vel_x*PERIOD;
 		}
 	}
-	if(SECOND){
+	if(SECOND) {
 		SECOND = 0;
-		if(correctlySentData){
+		if(correctlySentData) {
 			correctlySentData = 0;
-			sprintf(message,"v = %ld, a = %ld\n",v,axes.y);
-			HAL_UART_Transmit_IT(&huart2,(uint8_t *)message, strlen(message));
+			// sprintf(message,"v = %ld, a = %ld\n", lin_vel_y, axes_ACCELERO.y);
+			sprintf(message,"alpha = %ld, omega = %ld, theta = %ld\n", axes_GYRO.x, ang_vel_x, ang_pos_x);
+			HAL_UART_Transmit_IT(&huart2, (uint8_t *)message, strlen(message));
 		}
 	}
     /* USER CODE END WHILE */
