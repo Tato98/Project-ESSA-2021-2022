@@ -35,6 +35,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define LENGTH 25
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -49,8 +50,9 @@ TIM_HandleTypeDef htim4;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-volatile _Bool TENTH,SECOND = 0;
+volatile _Bool CENT,SECOND = 0;
 volatile int correctlySentData = 1;
+int32_t a[LENGTH] = {0,0,0,0,0};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -61,6 +63,8 @@ static void MX_TIM3_Init(void);
 static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
 void HAL_UART_TxCpltCallback (UART_HandleTypeDef *huart);
+static void Pushback (int data);
+static int32_t Filter ();
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -77,7 +81,7 @@ int main(void)
   /* USER CODE BEGIN 1 */
   char message[32];
   IKS01A3_MOTION_SENSOR_Axes_t axes;
-  volatile int32_t v = 0;
+  int32_t v = 0;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -108,18 +112,19 @@ int main(void)
   IKS01A3_MOTION_SENSOR_Enable(1,MOTION_ACCELERO);
 
   // Sensor Configuration
-  IKS01A3_MOTION_SENSOR_Write_Register(1,0x20,(uint8_t)100); //01100100: ODR=200 Hz, High-Performance Mode
-  IKS01A3_MOTION_SENSOR_Write_Register(1,0x25,(uint8_t)140); //10001100: BW=ODR/10=20 Hz, HP filtering, Low-Noise
+  IKS01A3_MOTION_SENSOR_Write_Register(1,0x20,(uint8_t)84); //01010100: ODR=100 Hz, High-Performance Mode
+  IKS01A3_MOTION_SENSOR_Write_Register(1,0x25,(uint8_t)204); //11001100: BW=ODR/20=5 Hz, HP filtering, Low-Noise
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	if(TENTH){
-		TENTH = 0;
+	if(CENT){
+		CENT = 0;
 		if(!IKS01A3_MOTION_SENSOR_GetAxes(1, MOTION_ACCELERO, &axes)){
-			v = v + axes.y*0.1;
+			Pushback(axes.y);
+			v = v + Filter(a)*0.01;
 		}
 	}
 	if(SECOND){
@@ -127,6 +132,9 @@ int main(void)
 		if(correctlySentData){
 			correctlySentData = 0;
 			sprintf(message,"v = %ld, a = %ld\n",v,axes.y);
+			//if (v>10) sprintf(message,"SX\n");
+			//else if (v<-10) sprintf(message,"DX\n");
+			//else sprintf(message,"ZERO\n");
 			HAL_UART_Transmit_IT(&huart2,(uint8_t *)message, strlen(message));
 		}
 	}
@@ -201,7 +209,7 @@ static void MX_TIM3_Init(void)
 
   /* USER CODE END TIM3_Init 1 */
   htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 999;
+  htim3.Init.Prescaler = 99;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim3.Init.Period = 8399;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -259,9 +267,9 @@ static void MX_TIM4_Init(void)
 
   /* USER CODE END TIM4_Init 1 */
   htim4.Instance = TIM4;
-  htim4.Init.Prescaler = 9999;
+  htim4.Init.Prescaler = 999;
   htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim4.Init.Period = 8399;
+  htim4.Init.Period = 16799;
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
@@ -367,7 +375,7 @@ static void MX_GPIO_Init(void)
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 	if(htim == &htim3){
 		if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_CLEARED){
-			TENTH = 1;
+			CENT = 1;
 		}
 	}
 	if(htim == &htim4){
@@ -379,6 +387,22 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 
 void HAL_UART_TxCpltCallback (UART_HandleTypeDef *huart){
 	correctlySentData = 1;
+}
+
+static void Pushback (int data){
+	int i;
+	for(i=0;i<LENGTH-1;i++){
+		a[i] = a[i+1];
+	}
+	a[LENGTH-1] = data;
+}
+
+static int32_t Filter(){
+	int i,sum = 0;
+	for(i=0;i<LENGTH;i++){
+		sum = sum + a[i];
+	}
+	return sum/LENGTH;
 }
 /* USER CODE END 4 */
 
