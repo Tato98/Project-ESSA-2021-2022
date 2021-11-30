@@ -131,6 +131,7 @@ int main(void) {
 				PushBack(axes.y);
 				v = v + Filter(a) * 0.01;
 			}
+
 			/*if(!IKS01A3_MOTION_SENSOR_GetAxes(0, MOTION_GYRO, &axes_GYRO)) {
 					 ang_vel_x = ang_vel_x + axes_GYRO.x*PERIOD;
 					 ang_pos_x = ang_pos_x + ang_vel_x*PERIOD;
