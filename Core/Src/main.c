@@ -35,7 +35,11 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+<<<<<<< HEAD
 #define PERIOD 0.1
+=======
+#define LENGTH 25
+>>>>>>> branch 'main' of https://github.com/Tato98/Project-ESSA-2021-2022.git
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -50,8 +54,13 @@ TIM_HandleTypeDef htim4;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+<<<<<<< HEAD
 volatile _Bool TENTH, SECOND = 0;
+=======
+volatile _Bool CENT,SECOND = 0;
+>>>>>>> branch 'main' of https://github.com/Tato98/Project-ESSA-2021-2022.git
 volatile int correctlySentData = 1;
+int32_t a[LENGTH] = {0,0,0,0,0};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -62,6 +71,8 @@ static void MX_TIM3_Init(void);
 static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
 void HAL_UART_TxCpltCallback (UART_HandleTypeDef *huart);
+static void Pushback (int data);
+static int32_t Filter ();
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -77,8 +88,13 @@ int main(void)
 {
   /* USER CODE BEGIN 1 */
   char message[32];
+<<<<<<< HEAD
   IKS01A3_MOTION_SENSOR_Axes_t axes_ACCELERO, axes_GYRO;
   volatile int32_t lin_vel_y = 0, ang_vel_x = 0, ang_pos_x = 0;
+=======
+  IKS01A3_MOTION_SENSOR_Axes_t axes;
+  int32_t v = 0;
+>>>>>>> branch 'main' of https://github.com/Tato98/Project-ESSA-2021-2022.git
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -113,14 +129,15 @@ int main(void)
   IKS01A3_MOTION_SENSOR_Enable(0, MOTION_GYRO);
 
   // Sensor Configuration
-  IKS01A3_MOTION_SENSOR_Write_Register(1,0x20,(uint8_t)100); //01100100: ODR=200 Hz, High-Performance Mode
-  IKS01A3_MOTION_SENSOR_Write_Register(1,0x25,(uint8_t)140); //10001100: BW=ODR/10=20 Hz, HP filtering, Low-Noise
+  IKS01A3_MOTION_SENSOR_Write_Register(1,0x20,(uint8_t)84); //01010100: ODR=100 Hz, High-Performance Mode
+  IKS01A3_MOTION_SENSOR_Write_Register(1,0x25,(uint8_t)204); //11001100: BW=ODR/20=5 Hz, HP filtering, Low-Noise
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+<<<<<<< HEAD
 	if(TENTH){
 		TENTH = 0;
 		// Integrates the linear acceleration to get the velocity
@@ -131,15 +148,30 @@ int main(void)
 		if(!IKS01A3_MOTION_SENSOR_GetAxes(0, MOTION_GYRO, &axes_GYRO)) {
 			ang_vel_x = ang_vel_x + axes_GYRO.x*PERIOD;
 			ang_pos_x = ang_pos_x + ang_vel_x*PERIOD;
+=======
+	if(CENT){
+		CENT = 0;
+		if(!IKS01A3_MOTION_SENSOR_GetAxes(1, MOTION_ACCELERO, &axes)){
+			Pushback(axes.y);
+			v = v + Filter(a)*0.01;
+>>>>>>> branch 'main' of https://github.com/Tato98/Project-ESSA-2021-2022.git
 		}
 	}
 	if(SECOND) {
 		SECOND = 0;
 		if(correctlySentData) {
 			correctlySentData = 0;
+<<<<<<< HEAD
 			// sprintf(message,"v = %ld, a = %ld\n", lin_vel_y, axes_ACCELERO.y);
 			sprintf(message,"alpha = %ld, omega = %ld, theta = %ld\n", axes_GYRO.x, ang_vel_x, ang_pos_x);
 			HAL_UART_Transmit_IT(&huart2, (uint8_t *)message, strlen(message));
+=======
+			sprintf(message,"v = %ld, a = %ld\n",v,axes.y);
+			//if (v>10) sprintf(message,"SX\n");
+			//else if (v<-10) sprintf(message,"DX\n");
+			//else sprintf(message,"ZERO\n");
+			HAL_UART_Transmit_IT(&huart2,(uint8_t *)message, strlen(message));
+>>>>>>> branch 'main' of https://github.com/Tato98/Project-ESSA-2021-2022.git
 		}
 	}
     /* USER CODE END WHILE */
@@ -213,7 +245,7 @@ static void MX_TIM3_Init(void)
 
   /* USER CODE END TIM3_Init 1 */
   htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 999;
+  htim3.Init.Prescaler = 99;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim3.Init.Period = 8399;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -271,9 +303,9 @@ static void MX_TIM4_Init(void)
 
   /* USER CODE END TIM4_Init 1 */
   htim4.Instance = TIM4;
-  htim4.Init.Prescaler = 9999;
+  htim4.Init.Prescaler = 999;
   htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim4.Init.Period = 8399;
+  htim4.Init.Period = 16799;
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
@@ -379,7 +411,7 @@ static void MX_GPIO_Init(void)
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 	if(htim == &htim3){
 		if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_CLEARED){
-			TENTH = 1;
+			CENT = 1;
 		}
 	}
 	if(htim == &htim4){
@@ -391,6 +423,22 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 
 void HAL_UART_TxCpltCallback (UART_HandleTypeDef *huart){
 	correctlySentData = 1;
+}
+
+static void Pushback (int data){
+	int i;
+	for(i=0;i<LENGTH-1;i++){
+		a[i] = a[i+1];
+	}
+	a[LENGTH-1] = data;
+}
+
+static int32_t Filter(){
+	int i,sum = 0;
+	for(i=0;i<LENGTH;i++){
+		sum = sum + a[i];
+	}
+	return sum/LENGTH;
 }
 /* USER CODE END 4 */
 
