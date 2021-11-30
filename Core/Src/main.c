@@ -34,7 +34,11 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+<<<<<<< HEAD
 #define PERIOD 0.01
+=======
+#define PERIOD 0.1
+>>>>>>> branch 'main' of https://github.com/Tato98/Project-ESSA-2021-2022.git
 #define LENGTH 25
 /* USER CODE END PD */
 
@@ -50,7 +54,11 @@ TIM_HandleTypeDef htim4;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+<<<<<<< HEAD
 volatile _Bool CENT, SECOND = 0;
+=======
+volatile _Bool CENT,TWOTENTHS = 0;
+>>>>>>> branch 'main' of https://github.com/Tato98/Project-ESSA-2021-2022.git
 volatile int correctlySentData = 1;
 int32_t a[LENGTH] = { 0, 0, 0, 0, 0 };
 /* USER CODE END PV */
@@ -73,6 +81,7 @@ static int32_t Filter();
 /* USER CODE END 0 */
 
 /**
+<<<<<<< HEAD
  * @brief  The application entry point.
  * @retval int
  */
@@ -83,6 +92,20 @@ int main(void) {
 	IKS01A3_MOTION_SENSOR_Axes_t axes, axes_GYRO;
 	int32_t v = 0;
 	/* USER CODE END 1 */
+=======
+  * @brief  The application entry point.
+  * @retval int
+  */
+int main(void)
+{
+  /* USER CODE BEGIN 1 */
+  char message[64];
+  IKS01A3_MOTION_SENSOR_Axes_t axes_ACCELERO, axes_GYRO;
+  volatile int32_t lin_vel_y = 0, ang_vel_x = 0, ang_pos_x = 0;
+  IKS01A3_MOTION_SENSOR_Axes_t axes;
+  int32_t v = 0;
+  /* USER CODE END 1 */
+>>>>>>> branch 'main' of https://github.com/Tato98/Project-ESSA-2021-2022.git
 
 	/* MCU Configuration--------------------------------------------------------*/
 
@@ -113,6 +136,7 @@ int main(void) {
 	IKS01A3_MOTION_SENSOR_Init(1, MOTION_ACCELERO);
 	IKS01A3_MOTION_SENSOR_Enable(1, MOTION_ACCELERO);
 
+<<<<<<< HEAD
 	// Gyro
 	IKS01A3_MOTION_SENSOR_Init(0, MOTION_GYRO);
 	IKS01A3_MOTION_SENSOR_Enable(0, MOTION_GYRO);
@@ -136,7 +160,19 @@ int main(void) {
 					 ang_vel_x = ang_vel_x + axes_GYRO.x*PERIOD;
 					 ang_pos_x = ang_pos_x + ang_vel_x*PERIOD;
 			}*/
+=======
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
+  while (1)
+  {
+	/*if(CENT){
+		CENT = 0;
+		// Integrates the linear acceleration to get the velocity
+		if(!IKS01A3_MOTION_SENSOR_GetAxes(1, MOTION_ACCELERO, &axes_ACCELERO)) {
+			lin_vel_y = lin_vel_y + axes_ACCELERO.y*PERIOD;
+>>>>>>> branch 'main' of https://github.com/Tato98/Project-ESSA-2021-2022.git
 		}
+<<<<<<< HEAD
 		if (SECOND) {
 			SECOND = 0;
 			if (correctlySentData) {
@@ -148,11 +184,25 @@ int main(void) {
 				//else sprintf(message,"ZERO\n");
 				HAL_UART_Transmit_IT(&huart2, (uint8_t*) message, strlen(message));
 			}
+=======
+		// Integrate the angular acceleration to get the angular velocity
+		if(!IKS01A3_MOTION_SENSOR_GetAxes(0, MOTION_GYRO, &axes_GYRO)) {
+			ang_vel_x = ang_vel_x + axes_GYRO.x*PERIOD;
+			ang_pos_x = ang_pos_x + ang_vel_x*PERIOD;
+		}
+	}*/
+	if(CENT){ //100 times a second
+		CENT = 0;
+		if(!IKS01A3_MOTION_SENSOR_GetAxes(1, MOTION_ACCELERO, &axes)){ //If the acceleration measurement returns no error code
+			Pushback(axes.y); //Push the last measurement into a vector
+			v = v + Filter()*0.01; //Compute the average of the vector and integrate to obtain the speed
+>>>>>>> branch 'main' of https://github.com/Tato98/Project-ESSA-2021-2022.git
 		}
 		/* USER CODE END WHILE */
 
 		/* USER CODE BEGIN 3 */
 	}
+<<<<<<< HEAD
 	/* USER CODE END 3 */
 }
 
@@ -182,6 +232,21 @@ void SystemClock_Config(void) {
 	RCC_OscInitStruct.PLL.PLLQ = 7;
 	if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
 		Error_Handler();
+=======
+	if(TWOTENTHS) {
+		TWOTENTHS = 0;
+		if(correctlySentData) {
+			correctlySentData = 0;
+			// sprintf(message,"v = %ld, a = %ld\n", lin_vel_y, axes_ACCELERO.y);
+			sprintf(message,"alpha = %ld, omega = %ld, theta = %ld\n", axes_GYRO.x, ang_vel_x, ang_pos_x);
+			HAL_UART_Transmit_IT(&huart2, (uint8_t *)message, strlen(message));
+			sprintf(message,"v = %ld, a = %ld\n",v,axes.y);
+			//if (v>10) sprintf(message,"SX\n");
+			//else if (v<-10) sprintf(message,"DX\n");
+			//else sprintf(message,"ZERO\n");
+			HAL_UART_Transmit_IT(&huart2,(uint8_t *)message, strlen(message));
+		}
+>>>>>>> branch 'main' of https://github.com/Tato98/Project-ESSA-2021-2022.git
 	}
 	/** Initializes the CPU, AHB and APB buses clocks
 	 */
@@ -373,9 +438,15 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 			CENT = 1;
 		}
 	}
+<<<<<<< HEAD
 	if (htim == &htim4) {
 		if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_CLEARED) {
 			SECOND = 1;
+=======
+	if(htim == &htim4){
+		if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_CLEARED){
+			TWOTENTHS = 1;
+>>>>>>> branch 'main' of https://github.com/Tato98/Project-ESSA-2021-2022.git
 		}
 	}
 }
