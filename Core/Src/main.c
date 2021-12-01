@@ -64,8 +64,7 @@ static void MX_USART2_UART_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
-void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart);
-static void Pushback_a(int data);
+static int Update_a(int data);
 static void Initialize_a();
 /* USER CODE END PFP */
 
@@ -85,7 +84,6 @@ int main(void)
 	IKS01A3_MOTION_SENSOR_Axes_t axes;
 	int32_t v = 0;
 	int32_t a_filtered = 0;
-	int oldest_sample;
 	//IKS01A3_MOTION_SENSOR_Axes_t axes_ACCELERO, axes_GYRO;
 	//volatile int32_t lin_vel_y = 0, ang_vel_x = 0, ang_pos_x = 0;
   /* USER CODE END 1 */
@@ -93,41 +91,41 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  HAL_Init();
+	HAL_Init();
 
   /* USER CODE BEGIN Init */
 
   /* USER CODE END Init */
 
   /* Configure the system clock */
-  SystemClock_Config();
+	SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
 
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
-  MX_GPIO_Init();
-  MX_USART2_UART_Init();
-  MX_TIM3_Init();
-  MX_TIM4_Init();
+	MX_GPIO_Init();
+	MX_USART2_UART_Init();
+	MX_TIM3_Init();
+	MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
-  HAL_TIM_Base_Start_IT(&htim3);
-  HAL_TIM_Base_Start_IT(&htim4);
+	HAL_TIM_Base_Start_IT(&htim3);
+	HAL_TIM_Base_Start_IT(&htim4);
 
-  // Gyro
-  //IKS01A3_MOTION_SENSOR_Init(0, MOTION_GYRO);
-  //IKS01A3_MOTION_SENSOR_Enable(0, MOTION_GYRO);
+	// Gyro
+	//IKS01A3_MOTION_SENSOR_Init(0, MOTION_GYRO);
+	//IKS01A3_MOTION_SENSOR_Enable(0, MOTION_GYRO);
 
-  // Accelero
-  IKS01A3_MOTION_SENSOR_Init(1, MOTION_ACCELERO);
-  IKS01A3_MOTION_SENSOR_Enable(1, MOTION_ACCELERO);
+	// Accelero
+	IKS01A3_MOTION_SENSOR_Init(1, MOTION_ACCELERO);
+	IKS01A3_MOTION_SENSOR_Enable(1, MOTION_ACCELERO);
 
-  // Sensor Configuration
-  IKS01A3_MOTION_SENSOR_Write_Register(1, 0x20, (uint8_t) 84); //01010100: ODR=100 Hz, High-Performance Mode
-  IKS01A3_MOTION_SENSOR_Write_Register(1, 0x25, (uint8_t) 204); //11001100: BW=ODR/20=5 Hz, HP filtering, Low-Noise
+	// Sensor Configuration
+	IKS01A3_MOTION_SENSOR_Write_Register(1, 0x20, (uint8_t) 84); //01010100: ODR=100 Hz, High-Performance Mode
+	IKS01A3_MOTION_SENSOR_Write_Register(1, 0x25, (uint8_t) 204); //11001100: BW=ODR/2=50 Hz, LP filtering, Low-Noise
 
-  Initialize_a();
+	Initialize_a();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -151,10 +149,10 @@ int main(void)
 		if (CENT) {
 			CENT = 0;
 			if (!IKS01A3_MOTION_SENSOR_GetAxes(1, MOTION_ACCELERO, &axes)) {
-				oldest_sample = a[0];
-				Pushback_a(axes.y);
-				a_filtered = (axes.y + a_filtered - oldest_sample) / LENGTH;
-				v = v + a_filtered * PERIOD;
+				if((unsigned)axes.y > 80){
+					a_filtered = (axes.y + a_filtered - Update_a(axes.y)) / LENGTH;
+					v = v + a_filtered * PERIOD;
+				}
 			}
 		}
 		//5 times a second
@@ -162,10 +160,10 @@ int main(void)
 			TWOTENTHS = 0;
 			if (correctlySentData) {
 				correctlySentData = 0;
-				//sprintf(message, "v = %ld, a = %ld\n", v, axes.y);
-				if (v>20) sprintf(message,"SX\n");
-				else if (v<-20) sprintf(message,"DX\n");
-				else sprintf(message,"ZERO\n");
+				sprintf(message, "v = %ld, a = %ld\n", v, axes.y);
+				//if (v>20) sprintf(message,"SX\n");
+				//else if (v<-20) sprintf(message,"DX\n");
+				//else sprintf(message,"ZERO\n");
 				HAL_UART_Transmit_IT(&huart2, (uint8_t*) message,strlen(message));
 			}
 		}
@@ -427,12 +425,14 @@ static void Initialize_a() {
 	}
 }
 
-static void Pushback_a(int data) {
+static int Update_a(int data) {
 	int i;
+	int first_element = a[0];
 	for (i = 0; i < LENGTH - 1; i++) {
 		a[i] = a[i + 1];
 	}
 	a[LENGTH - 1] = data;
+	return first_element;
 }
 /* USER CODE END 4 */
 
