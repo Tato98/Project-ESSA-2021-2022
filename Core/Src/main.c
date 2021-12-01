@@ -123,7 +123,7 @@ int main(void)
 
 	// Sensor Configuration
 	IKS01A3_MOTION_SENSOR_Write_Register(1, 0x20, (uint8_t) 84); //01010100: ODR=100 Hz, High-Performance Mode
-	IKS01A3_MOTION_SENSOR_Write_Register(1, 0x25, (uint8_t) 204); //11001100: BW=ODR/2=50 Hz, LP filtering, Low-Noise
+	IKS01A3_MOTION_SENSOR_Write_Register(1, 0x25, (uint8_t) 204); //11001100: BW=ODR/20=5 Hz, HP filtering, Low-Noise
 
 	Initialize_a();
   /* USER CODE END 2 */
