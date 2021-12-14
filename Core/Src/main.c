@@ -158,7 +158,7 @@ int main(void)
 			correctlySentData = 0;*/
 		}
 
-		HAL_Delay(200);
+		HAL_Delay(4);
 
 		// 100 times a second
 		/*if (CENT) {
