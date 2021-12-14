@@ -37,6 +37,7 @@
 /* USER CODE BEGIN PD */
 #define PERIOD 0.1
 #define LENGTH 8
+#define PI 3.14 // pi Greek
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -52,7 +53,8 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 volatile _Bool CENT, TWOTENTHS = 0;
-volatile int correctlySentData = 1;
+// volatile int correctlySentData = 1;  // questo è quello che usa Varaldi
+volatile int correctlySentData = 0;
 int32_t sum = 0;
 int32_t a[LENGTH];
 /* USER CODE END PV */
@@ -80,12 +82,12 @@ static void Initialize_a();
 int main(void)
 {
   /* USER CODE BEGIN 1 */
+	float pitch = 0;
 	char message[64];
+	char printData[32];
 	IKS01A3_MOTION_SENSOR_Axes_t axes;
 	int32_t v = 0;
 	int32_t a_filtered = 0;
-	//IKS01A3_MOTION_SENSOR_Axes_t axes_ACCELERO, axes_GYRO;
-	//volatile int32_t lin_vel_y = 0, ang_vel_x = 0, ang_pos_x = 0;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -122,8 +124,8 @@ int main(void)
 	IKS01A3_MOTION_SENSOR_Enable(1, MOTION_ACCELERO);
 
 	// Sensor Configuration
-	IKS01A3_MOTION_SENSOR_Write_Register(1, 0x20, (uint8_t) 84); //01010100: ODR=100 Hz, High-Performance Mode
-	IKS01A3_MOTION_SENSOR_Write_Register(1, 0x25, (uint8_t) 204); //11001100: BW=ODR/20=5 Hz, HP filtering, Low-Noise
+	//IKS01A3_MOTION_SENSOR_Write_Register(1, 0x20, (uint8_t) 84); //01010100: ODR=100 Hz, High-Performance Mode
+	//IKS01A3_MOTION_SENSOR_Write_Register(1, 0x25, (uint8_t) 204); //11001100: BW=ODR/20=5 Hz, HP filtering, Low-Noise
 
 	Initialize_a();
   /* USER CODE END 2 */
@@ -131,22 +133,27 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 	while (1) {
-		/*if (CENT) {
-		 	CENT = 0;
-		 	// Integrate the angular acceleration to get the angular velocity
-			if (!IKS01A3_MOTION_SENSOR_GetAxes(0, MOTION_GYRO, &axes_GYRO)) {
-				ang_vel_x = ang_vel_x + axes_GYRO.x * PERIOD;
-		}
-		if (TWOTENTHS) {
-		TWOTENTHS = 0;
-		if (correctlySentData) {
-			correctlySentData = 0;
-			sprintf(message,"alpha = %ld, omega = %ld, theta = %ld\n", axes_GYRO.x, ang_vel_x, ang_pos_x);
-			HAL_UART_Transmit_IT(&huart2, (uint8_t*) message,strlen(message));
-		}*/
 
-		//100 times a second
-		if (CENT) {
+		if(!IKS01A3_MOTION_SENSOR_GetAxes(1, MOTION_ACCELERO, &axes)) {
+			pitch = atan(-1 * axes.x / sqrt(pow(axes.y, 2) + pow(axes.z, 2))) * 180 / PI;
+			if(pitch > 45) {
+				sprintf(printData, "- pitch: %d (SX)\r\n", (int)pitch);
+			}
+			else if(pitch < -45) {
+				sprintf(printData, "- pitch: %d (DX)\r\n", (int)pitch);
+			}
+			else {
+				sprintf(printData, "- pitch: %d\r\n", (int)pitch);
+			}
+			HAL_UART_Transmit_IT(&huart2, (uint8_t *)printData, strlen(printData));
+			while(!correctlySentData);
+			correctlySentData = 0;
+		}
+
+		HAL_Delay(200);
+
+		// 100 times a second
+		/*if (CENT) {
 			CENT = 0;
 			if (!IKS01A3_MOTION_SENSOR_GetAxes(1, MOTION_ACCELERO, &axes)) {
 				if((unsigned)axes.y > 80){
@@ -166,7 +173,7 @@ int main(void)
 				//else sprintf(message,"ZERO\n");
 				HAL_UART_Transmit_IT(&huart2, (uint8_t*) message,strlen(message));
 			}
-		}
+		}*/
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
