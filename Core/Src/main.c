@@ -54,7 +54,8 @@ UART_HandleTypeDef huart2;
 /* USER CODE BEGIN PV */
 volatile _Bool CENT, TWOTENTHS = 0;
 // volatile int correctlySentData = 1;  // questo è quello che usa Varaldi
-volatile int correctlySentData = 0;
+volatile int correctlySentData = 1;
+volatile int n_ovf = 0;
 int32_t sum = 0;
 int32_t a[LENGTH];
 /* USER CODE END PV */
@@ -114,7 +115,6 @@ int main(void)
   /* USER CODE BEGIN 2 */
 	HAL_TIM_Base_Start_IT(&htim3);
 	HAL_TIM_Base_Start_IT(&htim4);
-
 	// Gyro
 	//IKS01A3_MOTION_SENSOR_Init(0, MOTION_GYRO);
 	//IKS01A3_MOTION_SENSOR_Enable(0, MOTION_GYRO);
@@ -128,30 +128,35 @@ int main(void)
 	//IKS01A3_MOTION_SENSOR_Write_Register(1, 0x25, (uint8_t) 204); //11001100: BW=ODR/20=5 Hz, HP filtering, Low-Noise
 
 	Initialize_a();
+	int32_t time_spent = 0;
+	int32_t begin = 0, end = 0;
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 	while (1) {
-
+		begin = __HAL_TIM_GetCounter(&htim3);
 		if(!IKS01A3_MOTION_SENSOR_GetAxes(1, MOTION_ACCELERO, &axes)) {
 			pitch = atan(-1 * axes.x / sqrt(pow(axes.y, 2) + pow(axes.z, 2))) * 180 / PI;
 			if(pitch > 45) {
-				sprintf(printData, "- pitch: %d (SX)\r\n", (int)pitch);
+				//printf(printData, "- pitch: %d (SX)\r\n", (int)pitch);
 			}
 			else if(pitch < -45) {
-				sprintf(printData, "- pitch: %d (DX)\r\n", (int)pitch);
+				//sprintf(printData, "- pitch: %d (DX)\r\n", (int)pitch);
 			}
 			else {
-				sprintf(printData, "- pitch: %d\r\n", (int)pitch);
+				//sprintf(printData, "- pitch: %d\r\n", (int)pitch);
 			}
-			HAL_UART_Transmit_IT(&huart2, (uint8_t *)printData, strlen(printData));
-			while(!correctlySentData);
+			//if(correctlySentData) HAL_UART_Transmit_IT(&huart2, (uint8_t *)printData, strlen(printData));
+			//correctlySentData = 0;
+			sprintf(printData, "%d\n", time_spent);
+			if(correctlySentData) HAL_UART_Transmit_IT(&huart2, (uint8_t *)printData, strlen(printData));
 			correctlySentData = 0;
 		}
-
+		end = __HAL_TIM_GetCounter(&htim3);
+		time_spent = end - begin + n_ovf*65535;
+		n_ovf = 0;
 		HAL_Delay(200);
-
 		// 100 times a second
 		/*if (CENT) {
 			CENT = 0;
@@ -245,9 +250,9 @@ static void MX_TIM3_Init(void)
 
   /* USER CODE END TIM3_Init 1 */
   htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 99;
+  htim3.Init.Prescaler = 0;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 8399;
+  htim3.Init.Period = 65535;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
@@ -409,16 +414,7 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
-	if (htim == &htim3) {
-		if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_CLEARED) {
-			CENT = 1;
-		}
-	}
-	if (htim == &htim4) {
-		if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_CLEARED) {
-			TWOTENTHS = 1;
-		}
-	}
+	if(htim == &htim3) n_ovf++;
 }
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
