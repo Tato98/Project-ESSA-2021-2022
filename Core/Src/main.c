@@ -35,9 +35,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define PERIOD 0.1
-#define LENGTH 8
-#define PI 3.14 // pi Greek
+#define LENGTH 5
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -52,11 +50,9 @@ TIM_HandleTypeDef htim4;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-volatile _Bool CENT, TWOTENTHS = 0;
-// volatile int correctlySentData = 1;  // questo è quello che usa Varaldi
-volatile int correctlySentData = 0;
-int32_t sum = 0;
-int32_t a[LENGTH];
+volatile _Bool FLAG = 0;
+volatile int correctlySentData = 1;
+int32_t pitch_vector[LENGTH], roll_vector[LENGTH];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -64,10 +60,10 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_TIM3_Init(void);
-static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
-static int Update_a(int data);
-static void Initialize_a();
+static int Update_pitch_vector(int data);
+static int Update_roll_vector(int data);
+static void Initialize_vectors();
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -82,12 +78,10 @@ static void Initialize_a();
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-	float pitch = 0;
-	char message[64];
+	float pitch = 0, roll = 0;
 	char printData[32];
 	IKS01A3_MOTION_SENSOR_Axes_t axes;
-	int32_t v = 0;
-	int32_t a_filtered = 0;
+	int32_t filtered_pitch = 0, filtered_roll = 0;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -110,70 +104,43 @@ int main(void)
 	MX_GPIO_Init();
 	MX_USART2_UART_Init();
 	MX_TIM3_Init();
-	MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
 	HAL_TIM_Base_Start_IT(&htim3);
-	HAL_TIM_Base_Start_IT(&htim4);
-
-	// Gyro
-	//IKS01A3_MOTION_SENSOR_Init(0, MOTION_GYRO);
-	//IKS01A3_MOTION_SENSOR_Enable(0, MOTION_GYRO);
-
-	// Accelero
 	IKS01A3_MOTION_SENSOR_Init(1, MOTION_ACCELERO);
 	IKS01A3_MOTION_SENSOR_Enable(1, MOTION_ACCELERO);
-
-	// Sensor Configuration
-	//IKS01A3_MOTION_SENSOR_Write_Register(1, 0x20, (uint8_t) 84); //01010100: ODR=100 Hz, High-Performance Mode
-	//IKS01A3_MOTION_SENSOR_Write_Register(1, 0x25, (uint8_t) 204); //11001100: BW=ODR/20=5 Hz, HP filtering, Low-Noise
-
-	Initialize_a();
+	Initialize_vectors();
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 	while (1) {
+		if(FLAG){
+			FLAG = 0;
+			if(!IKS01A3_MOTION_SENSOR_GetAxes(1, MOTION_ACCELERO, &axes)) {
+				// roll, pitch computation and filtering
+				pitch = atan(-1 * axes.y / sqrt(pow(axes.x, 2) + pow(axes.z, 2))) * 57.3;
+				filtered_pitch = filtered_pitch + pitch/LENGTH - Update_pitch_vector(pitch)/LENGTH;
 
-		if(!IKS01A3_MOTION_SENSOR_GetAxes(1, MOTION_ACCELERO, &axes)) {
-			pitch = atan(-1 * axes.x / sqrt(pow(axes.y, 2) + pow(axes.z, 2))) * 180 / PI;
-			if(pitch > 45) {
-				sprintf(printData, "- pitch: %d (SX)\r\n", (int)pitch);
-			}
-			else if(pitch < -45) {
-				sprintf(printData, "- pitch: %d (DX)\r\n", (int)pitch);
-			}
-			else {
-				sprintf(printData, "- pitch: %d\r\n", (int)pitch);
-			}
-			HAL_UART_Transmit_IT(&huart2, (uint8_t *)printData, strlen(printData));
-			while(!correctlySentData);
-			correctlySentData = 0;
-		}
+				roll = atan(-1 * axes.x / sqrt(pow(axes.y, 2) + pow(axes.z, 2))) * 57.3;
+				filtered_roll = filtered_roll + roll/LENGTH - Update_roll_vector(roll)/LENGTH;
 
-		HAL_Delay(200);
+				if(filtered_pitch > 30) sprintf(printData, "DX, ");
+				else if(filtered_pitch < -30) sprintf(printData, "SX, ");
+				else sprintf(printData, "STILL, ");
 
-		// 100 times a second
-		/*if (CENT) {
-			CENT = 0;
-			if (!IKS01A3_MOTION_SENSOR_GetAxes(1, MOTION_ACCELERO, &axes)) {
-				if((unsigned)axes.y > 80){
-					a_filtered = (axes.y + a_filtered - Update_a(axes.y)) / LENGTH;
-					v = v + a_filtered * PERIOD;
+				if (!HAL_GPIO_ReadPin(B1_GPIO_Port,B1_Pin)) strcat(printData, "FORWARD");
+				else strcat(printData, "STILL");
+
+				if (filtered_roll < -30) strcat(printData, ", PEW!");
+
+				strcat(printData, "\n");
+
+				if(correctlySentData){
+					HAL_UART_Transmit_IT(&huart2, (uint8_t *)printData, strlen(printData));
+					correctlySentData = 0;
 				}
 			}
 		}
-		//5 times a second
-		if (TWOTENTHS) {
-			TWOTENTHS = 0;
-			if (correctlySentData) {
-				correctlySentData = 0;
-				sprintf(message, "v = %ld, a = %ld\n", v, axes.y);
-				//if (v>20) sprintf(message,"SX\n");
-				//else if (v<-20) sprintf(message,"DX\n");
-				//else sprintf(message,"ZERO\n");
-				HAL_UART_Transmit_IT(&huart2, (uint8_t*) message,strlen(message));
-			}
-		}*/
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -284,64 +251,6 @@ static void MX_TIM3_Init(void)
 }
 
 /**
-  * @brief TIM4 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM4_Init(void)
-{
-
-  /* USER CODE BEGIN TIM4_Init 0 */
-
-  /* USER CODE END TIM4_Init 0 */
-
-  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
-  TIM_MasterConfigTypeDef sMasterConfig = {0};
-  TIM_OC_InitTypeDef sConfigOC = {0};
-
-  /* USER CODE BEGIN TIM4_Init 1 */
-
-  /* USER CODE END TIM4_Init 1 */
-  htim4.Instance = TIM4;
-  htim4.Init.Prescaler = 1999;
-  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim4.Init.Period = 8399;
-  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
-  if (HAL_TIM_ConfigClockSource(&htim4, &sClockSourceConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_TIM_OC_Init(&htim4) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sConfigOC.OCMode = TIM_OCMODE_TIMING;
-  sConfigOC.Pulse = 0;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  if (HAL_TIM_OC_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM4_Init 2 */
-
-  /* USER CODE END TIM4_Init 2 */
-
-}
-
-/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -411,12 +320,7 @@ static void MX_GPIO_Init(void)
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	if (htim == &htim3) {
 		if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_CLEARED) {
-			CENT = 1;
-		}
-	}
-	if (htim == &htim4) {
-		if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_CLEARED) {
-			TWOTENTHS = 1;
+			FLAG = 1;
 		}
 	}
 }
@@ -425,20 +329,37 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
 	correctlySentData = 1;
 }
 
-static void Initialize_a() {
+
+static void Initialize_vectors() {
+	// This function initialize the vectors to zero
 	int i;
 	for(i = 0; i < LENGTH; i++) {
-		a[i] = 0;
+		pitch_vector[i] = 0;
+		roll_vector[i] = 0;
 	}
 }
 
-static int Update_a(int data) {
+static int Update_pitch_vector(int data) {
+	// This function push the new sample of pitch inside the vector with its last n = LENGTH sample
+	// and returns the discarded value
 	int i;
-	int first_element = a[0];
+	int first_element = pitch_vector[0];
 	for (i = 0; i < LENGTH - 1; i++) {
-		a[i] = a[i + 1];
+		pitch_vector[i] = pitch_vector[i + 1];
 	}
-	a[LENGTH - 1] = data;
+	pitch_vector[LENGTH - 1] = data;
+	return first_element;
+}
+
+static int Update_roll_vector(int data) {
+	// This function push the new sample of roll inside the vector with its last n = LENGTH sample
+	// and returns the discarded value
+	int i;
+	int first_element = roll_vector[0];
+	for (i = 0; i < LENGTH - 1; i++) {
+		roll_vector[i] = roll_vector[i + 1];
+	}
+	roll_vector[LENGTH - 1] = data;
 	return first_element;
 }
 /* USER CODE END 4 */
