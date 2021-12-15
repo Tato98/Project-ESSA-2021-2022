@@ -25,7 +25,6 @@
 #include <stdio.h>
 #include <string.h>
 #include "iks01a3_motion_sensors.h"
-#include "iks01a3_motion_sensors_ex.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
