@@ -135,6 +135,7 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 	while (1) {
+		n_ovf = 0;
 		begin = __HAL_TIM_GetCounter(&htim3);
 		if(!IKS01A3_MOTION_SENSOR_GetAxes(1, MOTION_ACCELERO, &axes)) {
 			pitch = atan(-1 * axes.x / sqrt(pow(axes.y, 2) + pow(axes.z, 2))) * 180 / PI;
@@ -155,7 +156,6 @@ int main(void)
 		}
 		end = __HAL_TIM_GetCounter(&htim3);
 		time_spent = end - begin + n_ovf*65535;
-		n_ovf = 0;
 		HAL_Delay(200);
 		// 100 times a second
 		/*if (CENT) {
