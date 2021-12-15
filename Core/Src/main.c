@@ -84,7 +84,7 @@ int main(void)
   /* USER CODE BEGIN 1 */
 	float pitch = 0;
 	char message[64];
-	char printData;
+	char printData[2];
 	IKS01A3_MOTION_SENSOR_Axes_t axes;
 	int32_t v = 0;
 	int32_t a_filtered = 0;
@@ -136,23 +136,23 @@ int main(void)
 
 		if(!IKS01A3_MOTION_SENSOR_GetAxes(1, MOTION_ACCELERO, &axes)) {
 			pitch = atan(-1 * axes.x / sqrt(pow(axes.y, 2) + pow(axes.z, 2))) * 180 / PI;
-			if(pitch > 45) {
+			if(pitch > 20) {
 				// sprintf(printData, "- pitch: %d (SX)\r\n", (int)pitch);
-				sprintf(printData, "a");
+				sprintf(printData, "a\r\n");
+				HAL_UART_Transmit_IT(&huart2, (uint8_t *)printData, strlen(printData));
+				while(!correctlySentData);
+				correctlySentData = 0;
 			}
-			else if(pitch < -45) {
+			else if(pitch < -20) {
 				// sprintf(printData, "- pitch: %d (DX)\r\n", (int)pitch);
-				sprintf(printData, "d");
+				sprintf(printData, "d\r\n");
+				HAL_UART_Transmit_IT(&huart2, (uint8_t *)printData, strlen(printData));
+				while(!correctlySentData);
+				correctlySentData = 0;
 			}
-			else {
-				sprintf(printData, "k");
-			}
-			HAL_UART_Transmit_IT(&huart2, (uint8_t *)printData, strlen(printData));
-			while(!correctlySentData);
-			correctlySentData = 0;
 		}
 
-		HAL_Delay(4);
+		// HAL_Delay(50);
 
 		// 100 times a second
 		/*if (CENT) {
