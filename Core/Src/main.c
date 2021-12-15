@@ -66,8 +66,7 @@ static void MX_USART2_UART_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
-static int Update_a(int data);
-static void Initialize_a();
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -83,11 +82,8 @@ int main(void)
 {
   /* USER CODE BEGIN 1 */
 	float pitch = 0;
-	char message[64];
-	char printData;
+	char printData[2];
 	IKS01A3_MOTION_SENSOR_Axes_t axes;
-	int32_t v = 0;
-	int32_t a_filtered = 0;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -127,7 +123,6 @@ int main(void)
 	//IKS01A3_MOTION_SENSOR_Write_Register(1, 0x20, (uint8_t) 84); //01010100: ODR=100 Hz, High-Performance Mode
 	//IKS01A3_MOTION_SENSOR_Write_Register(1, 0x25, (uint8_t) 204); //11001100: BW=ODR/20=5 Hz, HP filtering, Low-Noise
 
-	Initialize_a();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -136,11 +131,11 @@ int main(void)
 
 		if(!IKS01A3_MOTION_SENSOR_GetAxes(1, MOTION_ACCELERO, &axes)) {
 			pitch = atan(-1 * axes.x / sqrt(pow(axes.y, 2) + pow(axes.z, 2))) * 180 / PI;
-			if(pitch > 45) {
+			if(pitch > 10) {
 				// sprintf(printData, "- pitch: %d (SX)\r\n", (int)pitch);
 				sprintf(printData, "a");
 			}
-			else if(pitch < -45) {
+		else if(pitch < -10) {
 				// sprintf(printData, "- pitch: %d (DX)\r\n", (int)pitch);
 				sprintf(printData, "d");
 			}
@@ -152,7 +147,7 @@ int main(void)
 			correctlySentData = 0;
 		}
 
-		HAL_Delay(4);
+		HAL_Delay(20);
 
 		// 100 times a second
 		/*if (CENT) {
@@ -427,22 +422,6 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
 	correctlySentData = 1;
 }
 
-static void Initialize_a() {
-	int i;
-	for(i = 0; i < LENGTH; i++) {
-		a[i] = 0;
-	}
-}
-
-static int Update_a(int data) {
-	int i;
-	int first_element = a[0];
-	for (i = 0; i < LENGTH - 1; i++) {
-		a[i] = a[i + 1];
-	}
-	a[LENGTH - 1] = data;
-	return first_element;
-}
 /* USER CODE END 4 */
 
 /**
