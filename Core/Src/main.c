@@ -35,9 +35,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define PERIOD 0.1
-#define LENGTH 8
-#define PI 3.14 // pi Greek
+#define LENGTH 5
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -53,8 +51,7 @@ UART_HandleTypeDef huart2;
 /* USER CODE BEGIN PV */
 volatile _Bool FLAG = 0;
 volatile int correctlySentData = 1;
-int32_t sum = 0;
-int32_t a[LENGTH];
+int32_t average_vector[LENGTH];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -63,8 +60,8 @@ static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_TIM3_Init(void);
 /* USER CODE BEGIN PFP */
-static int Update_a(int data);
-static void Initialize_a();
+static int Update_vector(int data);
+static void Initialize_vector();
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -82,7 +79,7 @@ int main(void)
   float pitch = 0;
   char printData[32];
   IKS01A3_MOTION_SENSOR_Axes_t axes;
-  int32_t a_filtered = 0;
+  int32_t filtered_pitch = 0;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -115,7 +112,7 @@ int main(void)
   //IKS01A3_MOTION_SENSOR_Write_Register(1, 0x20, (uint8_t) 84); //01010100: ODR=100 Hz, High-Performance Mode
   //IKS01A3_MOTION_SENSOR_Write_Register(1, 0x25, (uint8_t) 204); //11001100: BW=ODR/20=5 Hz, HP filtering, Low-Noise
 
-  Initialize_a();
+  Initialize_vector();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -124,10 +121,14 @@ int main(void)
 		if(FLAG){
 			FLAG = 0;
 			if(!IKS01A3_MOTION_SENSOR_GetAxes(1, MOTION_ACCELERO, &axes)) {
-				pitch = atan(-1 * axes.x / sqrt(pow(axes.y, 2) + pow(axes.z, 2))) * 180 / PI;
-				if(pitch > 45) sprintf(printData, "- pitch: %d (SX)\r\n", (int)pitch);
-				else if(pitch < -45) sprintf(printData, "- pitch: %d (DX)\r\n", (int)pitch);
-				else sprintf(printData, "- pitch: %d\r\n", (int)pitch);
+				// pitch computation and filtering
+				pitch = atan(-1 * axes.x / sqrt(pow(axes.y, 2) + pow(axes.z, 2))) * 57.3;
+				filtered_pitch = filtered_pitch + pitch/LENGTH - Update_vector(pitch)/LENGTH;
+
+				if(filtered_pitch > 45) sprintf(printData, "- pitch: %d (SX)\r\n", (int)filtered_pitch);
+				else if(filtered_pitch < -45) sprintf(printData, "- pitch: %d (DX)\r\n", (int)filtered_pitch);
+				else sprintf(printData, "- pitch: %d\r\n", (int)filtered_pitch);
+
 				if(correctlySentData){
 					HAL_UART_Transmit_IT(&huart2, (uint8_t *)printData, strlen(printData));
 					correctlySentData = 0;
@@ -313,6 +314,7 @@ static void MX_GPIO_Init(void)
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	if (htim == &htim3) {
 		if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_CLEARED) {
+			// Channel 1 of TIM3 sets this flag 240 times a second
 			FLAG = 1;
 		}
 	}
@@ -322,20 +324,23 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
 	correctlySentData = 1;
 }
 
-static void Initialize_a() {
+static void Initialize_vector() {
+	// This function initialize the vector with the last n = LENGTH samples of pitch to zero
 	int i;
 	for(i = 0; i < LENGTH; i++) {
-		a[i] = 0;
+		average_vector[i] = 0;
 	}
 }
 
-static int Update_a(int data) {
+static int Update_vector(int data) {
+	// This function push the new sample of pitch inside the vector with its last n = LENGTH sample
+	// and returns the discarded value
 	int i;
-	int first_element = a[0];
+	int first_element = average_vector[0];
 	for (i = 0; i < LENGTH - 1; i++) {
-		a[i] = a[i + 1];
+		average_vector[i] = average_vector[i + 1];
 	}
-	a[LENGTH - 1] = data;
+	average_vector[LENGTH - 1] = data;
 	return first_element;
 }
 /* USER CODE END 4 */
