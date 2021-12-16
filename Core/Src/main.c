@@ -123,28 +123,25 @@ int main(void)
 		if(TIM3_FLAG){
 			TIM3_FLAG = 0;
 			if(!IKS01A3_MOTION_SENSOR_GetAxes(1, MOTION_ACCELERO, &axes)) {
+				sprintf(printData, " ");
 
 				// blue button reading
-				if (!HAL_GPIO_ReadPin(B1_GPIO_Port,B1_Pin)) strcat(printData, "FORWARD");
-				else strcat(printData, "STILL");
+				if (!HAL_GPIO_ReadPin(B1_GPIO_Port,B1_Pin)) strcat(printData, "FORWARD ");
 
 				// pitch computation and filtering
 				pitch = atan(-1 * axes.y / sqrt(pow(axes.x, 2) + pow(axes.z, 2))) * 12;
 				filtered_pitch = filtered_pitch + pitch - Update_pitch_vector(pitch);
-
-				if(filtered_pitch > 15) sprintf(printData, "DX, ");
-				else if(filtered_pitch < -15) sprintf(printData, "SX, ");
-				else sprintf(printData, "STILL, ");
+				if(filtered_pitch > 25) strcat(printData, "DX ");
+				else if(filtered_pitch < -25) strcat(printData, "SX ");
 
 				// roll computation and filtering
 				roll = atan(-1 * axes.x / sqrt(pow(axes.y, 2) + pow(axes.z, 2))) * 12;
 				filtered_roll = filtered_roll + roll - Update_roll_vector(roll);
-
 				if (filtered_roll < 0) {
 					if(TIM4_FLAG){
 						// between two forward tilt detections it needs to pass half a second
 						TIM4_FLAG = 0;
-						strcat(printData, ", PEW!");
+						strcat(printData, "PEW!");
 						__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,8399);
 					}
 				}
