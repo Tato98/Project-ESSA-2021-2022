@@ -49,7 +49,7 @@ TIM_HandleTypeDef htim4;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-volatile _Bool FLAG = 0;
+volatile _Bool TIM3_FLAG = 0, TIM4_FLAG = 0;
 volatile int correctlySentData = 1;
 int32_t pitch_vector[LENGTH], roll_vector[LENGTH];
 /* USER CODE END PV */
@@ -59,6 +59,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_TIM3_Init(void);
+static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
 static int Update_pitch_vector(int data);
 static int Update_roll_vector(int data);
@@ -86,57 +87,72 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-	HAL_Init();
+  HAL_Init();
 
   /* USER CODE BEGIN Init */
 
   /* USER CODE END Init */
 
   /* Configure the system clock */
-	SystemClock_Config();
+  SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
 
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
-	MX_GPIO_Init();
-	MX_USART2_UART_Init();
-	MX_TIM3_Init();
+  MX_GPIO_Init();
+  MX_USART2_UART_Init();
+  MX_TIM3_Init();
+  MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
 	HAL_TIM_Base_Start_IT(&htim3);
+	HAL_TIM_Base_Start_IT(&htim4);
+	HAL_TIM_OC_Start_IT(&htim4,TIM_CHANNEL_1);
+	__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,35);
+
 	IKS01A3_MOTION_SENSOR_Init(1, MOTION_ACCELERO);
 	IKS01A3_MOTION_SENSOR_Enable(1, MOTION_ACCELERO);
+
 	Initialize_vectors();
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 	while (1) {
-		if(FLAG){
-			FLAG = 0;
+		if(TIM3_FLAG){
+			TIM3_FLAG = 0;
 			if(!IKS01A3_MOTION_SENSOR_GetAxes(1, MOTION_ACCELERO, &axes)) {
-				// roll, pitch computation and filtering
-				pitch = atan(-1 * axes.y / sqrt(pow(axes.x, 2) + pow(axes.z, 2))) * 57.3;
-				filtered_pitch = filtered_pitch + pitch/LENGTH - Update_pitch_vector(pitch)/LENGTH;
 
-				roll = atan(-1 * axes.x / sqrt(pow(axes.y, 2) + pow(axes.z, 2))) * 57.3;
-				filtered_roll = filtered_roll + roll/LENGTH - Update_roll_vector(roll)/LENGTH;
-
-				if(filtered_pitch > 30) sprintf(printData, "DX, ");
-				else if(filtered_pitch < -30) sprintf(printData, "SX, ");
-				else sprintf(printData, "STILL, ");
-
+				// blue button reading
 				if (!HAL_GPIO_ReadPin(B1_GPIO_Port,B1_Pin)) strcat(printData, "FORWARD");
 				else strcat(printData, "STILL");
 
-				if (filtered_roll < -30) strcat(printData, ", PEW!");
+				// pitch computation and filtering
+				pitch = atan(-1 * axes.y / sqrt(pow(axes.x, 2) + pow(axes.z, 2))) * 12;
+				filtered_pitch = filtered_pitch + pitch - Update_pitch_vector(pitch);
 
+				if(filtered_pitch > 15) sprintf(printData, "DX, ");
+				else if(filtered_pitch < -15) sprintf(printData, "SX, ");
+				else sprintf(printData, "STILL, ");
+
+				// roll computation and filtering
+				roll = atan(-1 * axes.x / sqrt(pow(axes.y, 2) + pow(axes.z, 2))) * 12;
+				filtered_roll = filtered_roll + roll - Update_roll_vector(roll);
+
+				if (filtered_roll < 0) {
+					if(TIM4_FLAG){
+						// between two forward tilt detections it needs to pass half a second
+						TIM4_FLAG = 0;
+						strcat(printData, ", PEW!");
+						__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,8399);
+					}
+				}
 				strcat(printData, "\n");
 
 				if(correctlySentData){
-					HAL_UART_Transmit_IT(&huart2, (uint8_t *)printData, strlen(printData));
 					correctlySentData = 0;
+					HAL_UART_Transmit_IT(&huart2, (uint8_t *)printData, strlen(printData));
 				}
 			}
 		}
@@ -250,6 +266,64 @@ static void MX_TIM3_Init(void)
 }
 
 /**
+  * @brief TIM4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM4_Init(void)
+{
+
+  /* USER CODE BEGIN TIM4_Init 0 */
+
+  /* USER CODE END TIM4_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  /* USER CODE BEGIN TIM4_Init 1 */
+
+  /* USER CODE END TIM4_Init 1 */
+  htim4.Instance = TIM4;
+  htim4.Init.Prescaler = 4999;
+  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim4.Init.Period = 8399;
+  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim4, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_OC_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_TIMING;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_OC_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM4_Init 2 */
+
+  /* USER CODE END TIM4_Init 2 */
+
+}
+
+/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -318,9 +392,14 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	if (htim == &htim3) {
-		if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_CLEARED) {
-			FLAG = 1;
-		}
+		TIM3_FLAG = 1;
+	}
+}
+
+void HAL_TIM_OC_DelayElapsedCallback (TIM_HandleTypeDef *htim){
+	if (htim == &htim4) {
+		TIM4_FLAG = 1;
+		__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,35);
 	}
 }
 
@@ -394,4 +473,3 @@ void assert_failed(uint8_t *file, uint32_t line)
 }
 #endif /* USE_FULL_ASSERT */
 
-/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
