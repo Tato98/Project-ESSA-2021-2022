@@ -394,12 +394,14 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	if (htim == &htim3) {
 		TIM3_FLAG = 1;
 	}
+	if (htim == &htim4) {
+		__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,35);
+	}
 }
 
 void HAL_TIM_OC_DelayElapsedCallback (TIM_HandleTypeDef *htim){
 	if (htim == &htim4) {
 		TIM4_FLAG = 1;
-		__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,35);
 	}
 }
 
