@@ -35,6 +35,8 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define LENGTH 5
+#define MIC_MIN 127 //min level of microphone
+#define MIC_MAX 256 //max level of microphone
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -43,12 +45,15 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+ADC_HandleTypeDef hadc1;
+
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
 
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+volatile int dcb = 0; //decibel level of the microphone
 volatile _Bool TIM3_FLAG = 0, TIM4_FLAG = 0;
 volatile int correctlySentData = 1;
 int32_t pitch_vector[LENGTH], roll_vector[LENGTH];
@@ -60,6 +65,7 @@ static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM4_Init(void);
+static void MX_ADC1_Init(void);
 /* USER CODE BEGIN PFP */
 static int Update_pitch_vector(int data);
 static int Update_roll_vector(int data);
@@ -105,9 +111,13 @@ int main(void)
   MX_USART2_UART_Init();
   MX_TIM3_Init();
   MX_TIM4_Init();
+  MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
+    HAL_ADC_Start_IT(&hadc1);
 	HAL_TIM_Base_Start_IT(&htim3);
 	HAL_TIM_Base_Start_IT(&htim4);
+	HAL_TIM_OC_Start_IT(&htim3,TIM_CHANNEL_1);
+	__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,8399);
 	HAL_TIM_OC_Start_IT(&htim4,TIM_CHANNEL_1);
 	__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,35);
 
@@ -125,31 +135,48 @@ int main(void)
 			if(!IKS01A3_MOTION_SENSOR_GetAxes(1, MOTION_ACCELERO, &axes)) {
 				sprintf(printData, " ");
 
-				// blue button reading
-				if (!HAL_GPIO_ReadPin(B1_GPIO_Port,B1_Pin)) strcat(printData, "FORWARD ");
+				// blue button reading : TELEPORT
+				if (!HAL_GPIO_ReadPin(B1_GPIO_Port,B1_Pin)) {
+					sprintf(printData, "t\r\n");
+					HAL_UART_Transmit_IT(&huart2,(uint8_t *)printData, strlen(printData));
+					if(correctlySentData) HAL_UART_Transmit_IT(&huart2, (uint8_t *)printData, strlen(printData));
+					correctlySentData = 0;
+				}
 
-				// pitch computation and filtering
+				// microphone reading : FORWARD
+				if(dcb > 230) {
+					sprintf(printData, "w\r\n");
+					HAL_UART_Transmit_IT(&huart2,(uint8_t *)printData, strlen(printData));
+					if(correctlySentData) HAL_UART_Transmit_IT(&huart2, (uint8_t *)printData, strlen(printData));
+					correctlySentData = 0;
+				}
+
+				// pitch computation and filtering : RIGHT - LEFT
 				pitch = atan(-1 * axes.y / sqrt(pow(axes.x, 2) + pow(axes.z, 2))) * 12;
 				filtered_pitch = filtered_pitch + pitch - Update_pitch_vector(pitch);
-				if(filtered_pitch > 25) strcat(printData, "DX ");
-				else if(filtered_pitch < -25) strcat(printData, "SX ");
+				if(filtered_pitch > 25) {
+					sprintf(printData, "a\r\n");
+					if(correctlySentData) HAL_UART_Transmit_IT(&huart2, (uint8_t *)printData, strlen(printData));
+					correctlySentData = 0;
+				}
+				else if(filtered_pitch < -25) {
+					sprintf(printData, "d\r\n");
+					if(correctlySentData) HAL_UART_Transmit_IT(&huart2, (uint8_t *)printData, strlen(printData));
+					correctlySentData = 0;
+				}
 
-				// roll computation and filtering
+				// roll computation and filtering - SHOOTING
 				roll = atan(-1 * axes.x / sqrt(pow(axes.y, 2) + pow(axes.z, 2))) * 12;
 				filtered_roll = filtered_roll + roll - Update_roll_vector(roll);
 				if (filtered_roll < 0) {
 					if(TIM4_FLAG){
 						// between two forward tilt detections it needs to pass half a second
 						TIM4_FLAG = 0;
-						strcat(printData, "PEW!");
+						sprintf(printData, "p\r\n");
+						if(correctlySentData) HAL_UART_Transmit_IT(&huart2, (uint8_t *)printData, strlen(printData));
+						correctlySentData = 0;
 						__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,8399);
 					}
-				}
-				strcat(printData, "\n");
-
-				if(correctlySentData){
-					correctlySentData = 0;
-					HAL_UART_Transmit_IT(&huart2, (uint8_t *)printData, strlen(printData));
 				}
 			}
 		}
@@ -205,6 +232,56 @@ void SystemClock_Config(void)
 }
 
 /**
+  * @brief ADC1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ADC1_Init(void)
+{
+
+  /* USER CODE BEGIN ADC1_Init 0 */
+
+  /* USER CODE END ADC1_Init 0 */
+
+  ADC_ChannelConfTypeDef sConfig = {0};
+
+  /* USER CODE BEGIN ADC1_Init 1 */
+
+  /* USER CODE END ADC1_Init 1 */
+  /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
+  */
+  hadc1.Instance = ADC1;
+  hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
+  hadc1.Init.Resolution = ADC_RESOLUTION_8B;
+  hadc1.Init.ScanConvMode = DISABLE;
+  hadc1.Init.ContinuousConvMode = DISABLE;
+  hadc1.Init.DiscontinuousConvMode = DISABLE;
+  hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_RISINGFALLING;
+  hadc1.Init.ExternalTrigConv = ADC_EXTERNALTRIGCONV_T3_CC1;
+  hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc1.Init.NbrOfConversion = 1;
+  hadc1.Init.DMAContinuousRequests = DISABLE;
+  hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  if (HAL_ADC_Init(&hadc1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
+  */
+  sConfig.Channel = ADC_CHANNEL_0;
+  sConfig.Rank = 1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_3CYCLES;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ADC1_Init 2 */
+
+  /* USER CODE END ADC1_Init 2 */
+
+}
+
+/**
   * @brief TIM3 Initialization Function
   * @param None
   * @retval None
@@ -226,7 +303,7 @@ static void MX_TIM3_Init(void)
   htim3.Instance = TIM3;
   htim3.Init.Prescaler = 99;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 8399;
+  htim3.Init.Period = 65535;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
@@ -282,9 +359,9 @@ static void MX_TIM4_Init(void)
 
   /* USER CODE END TIM4_Init 1 */
   htim4.Instance = TIM4;
-  htim4.Init.Prescaler = 4999;
+  htim4.Init.Prescaler = 99;
   htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim4.Init.Period = 8399;
+  htim4.Init.Period = 65535;
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
@@ -399,6 +476,15 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 void HAL_TIM_OC_DelayElapsedCallback (TIM_HandleTypeDef *htim){
 	if (htim == &htim4) {
 		TIM4_FLAG = 1;
+	}
+}
+
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc){
+	if(hadc == &hadc1){
+		if (HAL_ADC_GetValue(&hadc1) > MIC_MIN && HAL_ADC_GetValue(&hadc1) < MIC_MAX) {
+			dcb = HAL_ADC_GetValue(&hadc1);
+		}
+		__HAL_ADC_CLEAR_FLAG(&hadc1, ADC_FLAG_EOC);
 	}
 }
 
