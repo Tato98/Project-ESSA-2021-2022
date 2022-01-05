@@ -38,6 +38,8 @@
 #define PERIOD 0.1
 #define LENGTH 8
 #define PI 3.14 // pi Greek
+#define MIC_MIN 127 //min level of microphone
+#define MIC_MAX 256 //max level of microphone
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -46,6 +48,8 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+ADC_HandleTypeDef hadc1;
+
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
 
@@ -57,6 +61,10 @@ volatile _Bool CENT, TWOTENTHS = 0;
 volatile int correctlySentData = 0;
 int32_t sum = 0;
 int32_t a[LENGTH];
+
+//Microphone:
+int dcb = 0; //decibel level of the microphone
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -65,6 +73,7 @@ static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM4_Init(void);
+static void MX_ADC1_Init(void);
 /* USER CODE BEGIN PFP */
 static int Update_a(int data);
 static void Initialize_a();
@@ -93,27 +102,30 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-	HAL_Init();
+  HAL_Init();
 
   /* USER CODE BEGIN Init */
 
   /* USER CODE END Init */
 
   /* Configure the system clock */
-	SystemClock_Config();
+  SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
 
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
-	MX_GPIO_Init();
-	MX_USART2_UART_Init();
-	MX_TIM3_Init();
-	MX_TIM4_Init();
+  MX_GPIO_Init();
+  MX_USART2_UART_Init();
+  MX_TIM3_Init();
+  MX_TIM4_Init();
+  MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
-	HAL_TIM_Base_Start_IT(&htim3);
-	HAL_TIM_Base_Start_IT(&htim4);
+	//HAL_TIM_Base_Start_IT(&htim3);
+  	HAL_ADC_Start_IT(&hadc1);
+	HAL_TIM_OC_Start_IT(&htim3, TIM_CHANNEL_1);
+	//HAL_TIM_Base_Start_IT(&htim4);
 
 	// Gyro
 	//IKS01A3_MOTION_SENSOR_Init(0, MOTION_GYRO);
@@ -150,6 +162,13 @@ int main(void)
 				while(!correctlySentData);
 				correctlySentData = 0;
 			}
+		}
+
+		if(dcb > 230) {
+		sprintf(printData, "w\r\n");
+				 HAL_UART_Transmit_IT(&huart2,(uint8_t *)printData, strlen(printData));
+				 while(!correctlySentData);
+				 correctlySentData = 0;
 		}
 
 		// HAL_Delay(50);
@@ -228,6 +247,56 @@ void SystemClock_Config(void)
 }
 
 /**
+  * @brief ADC1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ADC1_Init(void)
+{
+
+  /* USER CODE BEGIN ADC1_Init 0 */
+
+  /* USER CODE END ADC1_Init 0 */
+
+  ADC_ChannelConfTypeDef sConfig = {0};
+
+  /* USER CODE BEGIN ADC1_Init 1 */
+
+  /* USER CODE END ADC1_Init 1 */
+  /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
+  */
+  hadc1.Instance = ADC1;
+  hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
+  hadc1.Init.Resolution = ADC_RESOLUTION_8B;
+  hadc1.Init.ScanConvMode = DISABLE;
+  hadc1.Init.ContinuousConvMode = DISABLE;
+  hadc1.Init.DiscontinuousConvMode = DISABLE;
+  hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_RISINGFALLING;
+  hadc1.Init.ExternalTrigConv = ADC_EXTERNALTRIGCONV_T3_CC1;
+  hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc1.Init.NbrOfConversion = 1;
+  hadc1.Init.DMAContinuousRequests = DISABLE;
+  hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  if (HAL_ADC_Init(&hadc1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
+  */
+  sConfig.Channel = ADC_CHANNEL_0;
+  sConfig.Rank = 1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_3CYCLES;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ADC1_Init 2 */
+
+  /* USER CODE END ADC1_Init 2 */
+
+}
+
+/**
   * @brief TIM3 Initialization Function
   * @param None
   * @retval None
@@ -247,9 +316,9 @@ static void MX_TIM3_Init(void)
 
   /* USER CODE END TIM3_Init 1 */
   htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 99;
+  htim3.Init.Prescaler = 83;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 8399;
+  htim3.Init.Period = 65535;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
@@ -271,8 +340,8 @@ static void MX_TIM3_Init(void)
   {
     Error_Handler();
   }
-  sConfigOC.OCMode = TIM_OCMODE_TIMING;
-  sConfigOC.Pulse = 0;
+  sConfigOC.OCMode = TIM_OCMODE_TOGGLE;
+  sConfigOC.Pulse = 4999;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
   if (HAL_TIM_OC_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
@@ -410,18 +479,28 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
-	if (htim == &htim3) {
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc){
+	if(hadc == &hadc1){
+		if (HAL_ADC_GetValue(&hadc1) > MIC_MIN && HAL_ADC_GetValue(&hadc1) < MIC_MAX) {
+			dcb = HAL_ADC_GetValue(&hadc1);
+		}
+		__HAL_ADC_CLEAR_FLAG(&hadc1, ADC_FLAG_EOC);
+	}
+}
+
+
+/*void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
+    if (htim == &htim3) {
 		if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_CLEARED) {
 			CENT = 1;
 		}
-	}
+	} //commented becaus tim3 channel 1 is used to sample the microphone output
 	if (htim == &htim4) {
 		if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_CLEARED) {
 			TWOTENTHS = 1;
 		}
 	}
-}
+}*/
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
 	correctlySentData = 1;
