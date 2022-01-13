@@ -37,6 +37,7 @@
 #define LENGTH 5
 #define MIC_MIN 127 //min level of microphone
 #define MIC_MAX 256 //max level of microphone
+#define FIRING_DELAY 42000
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -53,9 +54,10 @@ TIM_HandleTypeDef htim4;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-volatile int dcb = 0; //decibel level of the microphone
+volatile int dcb = 0;
 volatile _Bool TIM3_FLAG = 0, TIM4_FLAG = 0;
 volatile int correctlySentData = 1;
+volatile int n_ovf = 0;
 int32_t pitch_vector[LENGTH], roll_vector[LENGTH];
 /* USER CODE END PV */
 
@@ -85,8 +87,8 @@ int main(void)
 {
   /* USER CODE BEGIN 1 */
 	float pitch = 0, roll = 0;
-	char printData[32];
-	IKS01A3_MOTION_SENSOR_Axes_t axes;
+	char printData[32]; // message to be sent
+	IKS01A3_MOTION_SENSOR_Axes_t axes; // to contain the output of the sensor
 	int32_t filtered_pitch = 0, filtered_roll = 0;
   /* USER CODE END 1 */
 
@@ -113,73 +115,68 @@ int main(void)
   MX_TIM4_Init();
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
-    HAL_ADC_Start_IT(&hadc1);
-	HAL_TIM_Base_Start_IT(&htim3);
-	HAL_TIM_Base_Start_IT(&htim4);
+    HAL_ADC_Start_IT(&hadc1); // Start Analog to Digital Converter
+	HAL_TIM_Base_Start_IT(&htim3); // Start TIM3 to send a periodic interrupt of 240 Hz
+	HAL_TIM_Base_Start_IT(&htim4); // Start TIM4 to limit the shooting frequency to 2 Hz
 	HAL_TIM_OC_Start_IT(&htim3,TIM_CHANNEL_1);
-	__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,8399);
+	__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_1,3499);
 	HAL_TIM_OC_Start_IT(&htim4,TIM_CHANNEL_1);
 	__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,35);
 
 	IKS01A3_MOTION_SENSOR_Init(1, MOTION_ACCELERO);
 	IKS01A3_MOTION_SENSOR_Enable(1, MOTION_ACCELERO);
 
-	Initialize_vectors();
+	Initialize_vectors(); // reset the roll and pitch vectors
+	int32_t time_spent = 0;
+	int32_t begin = 0, end = 0;
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 	while (1) {
-		if(TIM3_FLAG){
+		n_ovf = 0;
+		begin = __HAL_TIM_GetCounter(&htim3);
+		if(TIM3_FLAG){ // this flag sets 240 times a second
 			TIM3_FLAG = 0;
-			if(!IKS01A3_MOTION_SENSOR_GetAxes(1, MOTION_ACCELERO, &axes)) {
-				sprintf(printData, " ");
-
-				// blue button reading : TELEPORT
-				if (!HAL_GPIO_ReadPin(B1_GPIO_Port,B1_Pin)) {
-					sprintf(printData, "t\r\n");
-					HAL_UART_Transmit_IT(&huart2,(uint8_t *)printData, strlen(printData));
-					if(correctlySentData) HAL_UART_Transmit_IT(&huart2, (uint8_t *)printData, strlen(printData));
-					correctlySentData = 0;
-				}
-
-				// microphone reading : FORWARD
-				if(dcb > 230) {
-					sprintf(printData, "w\r\n");
-					HAL_UART_Transmit_IT(&huart2,(uint8_t *)printData, strlen(printData));
-					if(correctlySentData) HAL_UART_Transmit_IT(&huart2, (uint8_t *)printData, strlen(printData));
-					correctlySentData = 0;
-				}
-
+			if(!IKS01A3_MOTION_SENSOR_GetAxes(1, MOTION_ACCELERO, &axes)) { // if the sensor reading is successful
+				sprintf(printData,"\r\n");
 				// pitch computation and filtering : RIGHT - LEFT
 				pitch = atan(-1 * axes.y / sqrt(pow(axes.x, 2) + pow(axes.z, 2))) * 12;
 				filtered_pitch = filtered_pitch + pitch - Update_pitch_vector(pitch);
 				if(filtered_pitch > 25) {
-					sprintf(printData, "a\r\n");
-					if(correctlySentData) HAL_UART_Transmit_IT(&huart2, (uint8_t *)printData, strlen(printData));
-					correctlySentData = 0;
+					strcat(printData, "a");
 				}
 				else if(filtered_pitch < -25) {
-					sprintf(printData, "d\r\n");
-					if(correctlySentData) HAL_UART_Transmit_IT(&huart2, (uint8_t *)printData, strlen(printData));
-					correctlySentData = 0;
+					strcat(printData, "d");
 				}
 
-				// roll computation and filtering - SHOOTING
+				// roll computation and filtering - FIRING
 				roll = atan(-1 * axes.x / sqrt(pow(axes.y, 2) + pow(axes.z, 2))) * 12;
 				filtered_roll = filtered_roll + roll - Update_roll_vector(roll);
 				if (filtered_roll < 0) {
 					if(TIM4_FLAG){
-						// between two forward tilt detections it needs to pass half a second
+						// if half a second has passed since the last fired shot
 						TIM4_FLAG = 0;
-						sprintf(printData, "p\r\n");
-						if(correctlySentData) HAL_UART_Transmit_IT(&huart2, (uint8_t *)printData, strlen(printData));
-						correctlySentData = 0;
-						__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,8399);
+						strcat(printData, "p");
+						__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,HAL_TIM_ReadCapturedValue(&htim3,TIM_CHANNEL_1)+FIRING_DELAY); // half a second needs to pass before the next shot
 					}
 				}
 			}
+			// blue button reading : TELEPORT
+			if (!HAL_GPIO_ReadPin(B1_GPIO_Port,B1_Pin)) {
+				strcat(printData, "t");
+			}
+
+			// microphone reading : FORWARD
+			if(dcb > 230) {
+				strcat(printData, "w");
+			}
 		}
+		HAL_UART_Transmit_IT(&huart2,(uint8_t *)printData, strlen(printData));
+		if(correctlySentData) HAL_UART_Transmit_IT(&huart2, (uint8_t *)printData, strlen(printData));
+		correctlySentData = 0;
+		end = __HAL_TIM_GetCounter(&htim3);
+		time_spent = end - begin + n_ovf*65535;
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -254,7 +251,7 @@ static void MX_ADC1_Init(void)
   hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
   hadc1.Init.Resolution = ADC_RESOLUTION_8B;
   hadc1.Init.ScanConvMode = DISABLE;
-  hadc1.Init.ContinuousConvMode = DISABLE;
+  hadc1.Init.ContinuousConvMode = ENABLE;
   hadc1.Init.DiscontinuousConvMode = DISABLE;
   hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_RISINGFALLING;
   hadc1.Init.ExternalTrigConv = ADC_EXTERNALTRIGCONV_T3_CC1;
@@ -325,7 +322,7 @@ static void MX_TIM3_Init(void)
   {
     Error_Handler();
   }
-  sConfigOC.OCMode = TIM_OCMODE_TIMING;
+  sConfigOC.OCMode = TIM_OCMODE_TOGGLE;
   sConfigOC.Pulse = 0;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
@@ -359,7 +356,7 @@ static void MX_TIM4_Init(void)
 
   /* USER CODE END TIM4_Init 1 */
   htim4.Instance = TIM4;
-  htim4.Init.Prescaler = 99;
+  htim4.Init.Prescaler = 999;
   htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim4.Init.Period = 65535;
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -466,16 +463,17 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	if (htim == &htim3) {
-		TIM3_FLAG = 1;
-	}
-	if (htim == &htim4) {
-		__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,35);
+		n_ovf++;
 	}
 }
 
 void HAL_TIM_OC_DelayElapsedCallback (TIM_HandleTypeDef *htim){
+	if (htim == &htim3) {
+		TIM3_FLAG = 1;
+	}
 	if (htim == &htim4) {
 		TIM4_FLAG = 1;
+		__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,HAL_TIM_ReadCapturedValue(&htim3,TIM_CHANNEL_1)+35);
 	}
 }
 
