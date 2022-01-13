@@ -117,7 +117,9 @@ int main(void)
 	HAL_TIM_Base_Start_IT(&htim3);
 	HAL_TIM_Base_Start_IT(&htim4);
 	HAL_TIM_OC_Start_IT(&htim3,TIM_CHANNEL_1);
-	__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,8399);
+	__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_1,8399);
+	HAL_TIM_OC_Start_IT(&htim3,TIM_CHANNEL_2);
+	__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_1,8399);
 	HAL_TIM_OC_Start_IT(&htim4,TIM_CHANNEL_1);
 	__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,35);
 
@@ -134,22 +136,6 @@ int main(void)
 			TIM3_FLAG = 0;
 			if(!IKS01A3_MOTION_SENSOR_GetAxes(1, MOTION_ACCELERO, &axes)) {
 				sprintf(printData, " ");
-
-				// blue button reading : TELEPORT
-				if (!HAL_GPIO_ReadPin(B1_GPIO_Port,B1_Pin)) {
-					sprintf(printData, "t\r\n");
-					HAL_UART_Transmit_IT(&huart2,(uint8_t *)printData, strlen(printData));
-					if(correctlySentData) HAL_UART_Transmit_IT(&huart2, (uint8_t *)printData, strlen(printData));
-					correctlySentData = 0;
-				}
-
-				// microphone reading : FORWARD
-				if(dcb > 230) {
-					sprintf(printData, "w\r\n");
-					HAL_UART_Transmit_IT(&huart2,(uint8_t *)printData, strlen(printData));
-					if(correctlySentData) HAL_UART_Transmit_IT(&huart2, (uint8_t *)printData, strlen(printData));
-					correctlySentData = 0;
-				}
 
 				// pitch computation and filtering : RIGHT - LEFT
 				pitch = atan(-1 * axes.y / sqrt(pow(axes.x, 2) + pow(axes.z, 2))) * 12;
@@ -179,7 +165,24 @@ int main(void)
 					}
 				}
 			}
+
+			// blue button reading : TELEPORT
+			if (!HAL_GPIO_ReadPin(B1_GPIO_Port,B1_Pin)) {
+				sprintf(printData, "t\r\n");
+				HAL_UART_Transmit_IT(&huart2,(uint8_t *)printData, strlen(printData));
+				if(correctlySentData) HAL_UART_Transmit_IT(&huart2, (uint8_t *)printData, strlen(printData));
+				correctlySentData = 0;
+			}
+
+			// microphone reading : FORWARD
+			if(dcb > 230) {
+				sprintf(printData, "w\r\n");
+				HAL_UART_Transmit_IT(&huart2,(uint8_t *)printData, strlen(printData));
+				if(correctlySentData) HAL_UART_Transmit_IT(&huart2, (uint8_t *)printData, strlen(printData));
+				correctlySentData = 0;
+			}
 		}
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -333,6 +336,10 @@ static void MX_TIM3_Init(void)
   {
     Error_Handler();
   }
+  if (HAL_TIM_OC_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
+  {
+    Error_Handler();
+  }
   /* USER CODE BEGIN TIM3_Init 2 */
 
   /* USER CODE END TIM3_Init 2 */
@@ -465,15 +472,17 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
-	if (htim == &htim3) {
-		TIM3_FLAG = 1;
-	}
 	if (htim == &htim4) {
 		__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,35);
 	}
 }
 
 void HAL_TIM_OC_DelayElapsedCallback (TIM_HandleTypeDef *htim){
+	if (htim == &htim3) {
+			if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_2){
+			TIM3_FLAG = 1;
+			}
+		}
 	if (htim == &htim4) {
 		TIM4_FLAG = 1;
 	}
