@@ -140,14 +140,15 @@ int main(void)
 			TIM3_FLAG = 0;
 			if(!IKS01A3_MOTION_SENSOR_GetAxes(1, MOTION_ACCELERO, &axes)) { // if the sensor reading is successful
 				sprintf(printData,"\r\n");
+
 				// pitch computation and filtering : RIGHT - LEFT
 				pitch = atan(-1 * axes.y / sqrt(pow(axes.x, 2) + pow(axes.z, 2))) * 12;
 				filtered_pitch = filtered_pitch + pitch - Update_pitch_vector(pitch);
 				if(filtered_pitch > 25) {
-					strcat(printData, "a");
+					strcat(printData, "d");
 				}
 				else if(filtered_pitch < -25) {
-					strcat(printData, "d");
+					strcat(printData, "a");
 				}
 
 				// roll computation and filtering - FIRING
