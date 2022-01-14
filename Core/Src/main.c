@@ -34,10 +34,10 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define LENGTH 5
+#define LENGTH 5 //number of samples used by the mobile avg filter
 #define MIC_MIN 127 //min level of microphone
 #define MIC_MAX 256 //max level of microphone
-#define FIRING_DELAY 42000
+#define TELEPORT_DELAY 42000 //Delay between two presses of teleport (so that the teleport is not spammed)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -54,11 +54,9 @@ TIM_HandleTypeDef htim4;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-volatile int dcb = 0;
-volatile _Bool TIM3_FLAG = 0, TIM4_FLAG = 0;
-volatile int correctlySentData = 1;
+volatile _Bool TIM3_FLAG = 0, TIM4_FLAG = 0, EOC_FLAG = 0, correctlySentData = 1;//flags used for the callbacks
 volatile int n_ovf = 0;
-int32_t pitch_vector[LENGTH], roll_vector[LENGTH];
+int32_t pitch_vector[LENGTH], roll_vector[LENGTH]; //vectors containing the last n (n = LENGTH) samples of pitch and roll angles
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -119,9 +117,8 @@ int main(void)
 	HAL_TIM_Base_Start_IT(&htim3); // Start TIM3 to send a periodic interrupt of 240 Hz
 	HAL_TIM_Base_Start_IT(&htim4); // Start TIM4 to limit the shooting frequency to 2 Hz
 	HAL_TIM_OC_Start_IT(&htim3,TIM_CHANNEL_1);
-	__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_1,3499);
 	HAL_TIM_OC_Start_IT(&htim4,TIM_CHANNEL_1);
-	__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,35);
+	__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,34);
 
 	IKS01A3_MOTION_SENSOR_Init(1, MOTION_ACCELERO);
 	IKS01A3_MOTION_SENSOR_Enable(1, MOTION_ACCELERO);
@@ -138,44 +135,50 @@ int main(void)
 		n_ovf = 0;
 		begin = __HAL_TIM_GetCounter(&htim3);
 
-		if(TIM3_FLAG) { // this flag sets 240 times a second
+		if(TIM3_FLAG) { // this flag is set 240 times a second
 			TIM3_FLAG = 0;
 			sprintf(printData,"\r\n");
 			if(!IKS01A3_MOTION_SENSOR_GetAxes(1, MOTION_ACCELERO, &axes)) { // if the sensor reading is successful
 
-				// pitch computation and filtering : RIGHT - LEFT
+				// pitch computation and filtering : RIGHT - LEFT (a and d button of the keyboard)
 				pitch = atan(-1 * axes.y / sqrt(pow(axes.x, 2) + pow(axes.z, 2))) * 12;
 				filtered_pitch = filtered_pitch + pitch - Update_pitch_vector(pitch);
-				if(filtered_pitch > 25) {
+				if(filtered_pitch > 20) {
 					strcat(printData, "d");
 				}
-				else if(filtered_pitch < -25) {
+				else if(filtered_pitch < -20) {
 					strcat(printData, "a");
 				}
 
-				// roll computation and filtering - FIRING
+				// roll computation and filtering - TELEPORT (s button of the keyboard)
 				roll = atan(-1 * axes.x / sqrt(pow(axes.y, 2) + pow(axes.z, 2))) * 12;
 				filtered_roll = filtered_roll + roll - Update_roll_vector(roll);
 				if (filtered_roll < 0) {
 					if(TIM4_FLAG){
 						// if half a second has passed since the last fired shot
 						TIM4_FLAG = 0;
-						strcat(printData, "p");
-						__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,HAL_TIM_ReadCapturedValue(&htim3,TIM_CHANNEL_1)+FIRING_DELAY); // half a second needs to pass before the next shot
+						strcat(printData, "s");
+						__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,HAL_TIM_ReadCapturedValue(&htim3,TIM_CHANNEL_1)+TELEPORT_DELAY); // half a second needs to pass before the next shot
 					}
 				}
 			}
-			// blue button reading : TELEPORT
+			// blue button reading : FIRING (space button of the keyboard)
 			if (!HAL_GPIO_ReadPin(B1_GPIO_Port,B1_Pin)) {
-				strcat(printData, "t");
+				strcat(printData, " ");
 			}
 
-			// microphone reading : FORWARD
-			if(dcb > 230) {
-				strcat(printData, "w");
+			// microphone reading : FORWARD (w button of the keyboard)
+			if (EOC_FLAG == 1) {
+				if (HAL_ADC_GetValue(&hadc1) > MIC_MIN && HAL_ADC_GetValue(&hadc1) < MIC_MAX) {
+					if(HAL_ADC_GetValue(&hadc1)> 230) {
+						strcat(printData, "w");
+						EOC_FLAG = 0;
+					}
+				}
 			}
 		}
 
+		//transmits the letters corresponding to the buttons of the keyboard that have to be pressed
 		HAL_UART_Transmit_IT(&huart2,(uint8_t *)printData, strlen(printData));
 		if(correctlySentData) HAL_UART_Transmit_IT(&huart2, (uint8_t *)printData, strlen(printData));
 		correctlySentData = 0;
@@ -328,7 +331,7 @@ static void MX_TIM3_Init(void)
     Error_Handler();
   }
   sConfigOC.OCMode = TIM_OCMODE_TOGGLE;
-  sConfigOC.Pulse = 0;
+  sConfigOC.Pulse = 3499;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
   if (HAL_TIM_OC_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
@@ -466,6 +469,8 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+/*Callback override of tim3, tim4, ADC and UART*/
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	if (htim == &htim3) {
 		n_ovf++;
@@ -474,19 +479,22 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 
 void HAL_TIM_OC_DelayElapsedCallback (TIM_HandleTypeDef *htim){
 	if (htim == &htim3) {
-		TIM3_FLAG = 1;
+		TIM3_FLAG = 1; //240Hz flag to send the chars "s","a","d" through COM port (see the while)
 	}
 	if (htim == &htim4) {
-		TIM4_FLAG = 1;
-		__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,HAL_TIM_ReadCapturedValue(&htim3,TIM_CHANNEL_1)+35);
+		TIM4_FLAG = 1; //2400Hz or 2Hz (after having pressed s) flag to send the char space through COM port (see the while)
+		__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,HAL_TIM_ReadCapturedValue(&htim3,TIM_CHANNEL_1)+34);
 	}
 }
 
+/**
+  * @brief  This ADC callback is used to capture the audio signal coming from the microphone
+  * @param  none
+  * @retval none
+  */
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc){
 	if(hadc == &hadc1){
-		if (HAL_ADC_GetValue(&hadc1) > MIC_MIN && HAL_ADC_GetValue(&hadc1) < MIC_MAX) {
-			dcb = HAL_ADC_GetValue(&hadc1);
-		}
+		EOC_FLAG = 1; //flag to communicate end of conversion of the ADC. This is used to send the char "w" through COM port (see the while)
 		__HAL_ADC_CLEAR_FLAG(&hadc1, ADC_FLAG_EOC);
 	}
 }
@@ -495,9 +503,14 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
 	correctlySentData = 1;
 }
 
+/*
 
+/**
+  * @brief  This function initialize the vectors to zero
+  * @param  none
+  * @retval none
+  */
 static void Initialize_vectors() {
-	// This function initialize the vectors to zero
 	int i;
 	for(i = 0; i < LENGTH; i++) {
 		pitch_vector[i] = 0;
@@ -505,9 +518,13 @@ static void Initialize_vectors() {
 	}
 }
 
+/**
+  * @brief  This function pushes the new sample of pitch inside the vector with its
+  * 	    last n = LENGTH sample and returns the discarded value
+  * @param  data: new measurement of pitch
+  * @retval first_element: first element of pitch_vector
+  */
 static int Update_pitch_vector(int data) {
-	// This function push the new sample of pitch inside the vector with its last n = LENGTH sample
-	// and returns the discarded value
 	int i;
 	int first_element = pitch_vector[0];
 	for (i = 0; i < LENGTH - 1; i++) {
@@ -517,9 +534,13 @@ static int Update_pitch_vector(int data) {
 	return first_element;
 }
 
+/**
+  * @brief  This function pushes the new sample of pitch inside the vector with its
+  * 	    last n = LENGTH sample and returns the discarded value
+  * @param  data: new measurement of roll
+  * @retval first_element: first element of roll_vector
+  */
 static int Update_roll_vector(int data) {
-	// This function push the new sample of roll inside the vector with its last n = LENGTH sample
-	// and returns the discarded value
 	int i;
 	int first_element = roll_vector[0];
 	for (i = 0; i < LENGTH - 1; i++) {
