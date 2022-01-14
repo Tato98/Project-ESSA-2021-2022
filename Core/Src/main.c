@@ -34,10 +34,16 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define LENGTH 5 //number of samples used by the mobile avg filter
-#define MIC_MIN 127 //min level of microphone
-#define MIC_MAX 256 //max level of microphone
-#define TELEPORT_DELAY 42000 //Delay between two presses of teleport (so that the teleport is not spammed)
+#define N 5 // Number of samples used by the moving average filter
+#define MIN_NOISE 127 // Microphone minimum level
+#define MAX_NOISE 255 // Microphone maximum level
+#define HS_DELAY 41999 // Delay between two instances of HYPER_SPACE
+#define SH_DELAY 8399 // Delay between two instances of SHOOT
+#define LEFT_KEY "a"
+#define RIGHT_KEY "d"
+#define THRUST_KEY "w"
+#define SHOOT_KEY "o"
+#define HYPER_SPACE_KEY "s"
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -54,9 +60,9 @@ TIM_HandleTypeDef htim4;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-volatile _Bool TIM3_FLAG = 0, TIM4_FLAG = 0, EOC_FLAG = 0, correctlySentData = 1;//flags used for the callbacks
+volatile _Bool TIM3_FLAG = 0, TIM4_FLAG1 = 0, TIM4_FLAG2 = 0, EOC_FLAG = 0, correctlySentData = 1; // Flags for the interrupts
 volatile int n_ovf = 0;
-int32_t pitch_vector[LENGTH], roll_vector[LENGTH]; //vectors containing the last n (n = LENGTH) samples of pitch and roll angles
+int32_t pitch_vector[N]; // Vectors containing the last N samples of pitch and roll angles
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -68,8 +74,7 @@ static void MX_TIM4_Init(void);
 static void MX_ADC1_Init(void);
 /* USER CODE BEGIN PFP */
 static int Update_pitch_vector(int data);
-static int Update_roll_vector(int data);
-static void Initialize_vectors();
+static void Initialize_vector();
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -84,10 +89,12 @@ static void Initialize_vectors();
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-	float pitch = 0, roll = 0;
-	char printData[32]; // message to be sent
-	IKS01A3_MOTION_SENSOR_Axes_t axes; // to contain the output of the sensor
-	int32_t filtered_pitch = 0, filtered_roll = 0;
+	IKS01A3_MOTION_SENSOR_Axes_t axes; // Accelerometer output
+	float pitch = 0, roll = 0; // Computed values of Pitch and Roll angles
+	float filtered_pitch = 0; // Values returned by the filtering action
+	int noise = 0; // Microphone output
+	char message[32]; // Message to be sent
+
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -117,16 +124,18 @@ int main(void)
     /*Hardware start*/
   	HAL_ADC_Start_IT(&hadc1); // Start Analog to Digital Converter
 	HAL_TIM_Base_Start_IT(&htim3); // Start TIM3 to send a periodic interrupt of 240 Hz
-	HAL_TIM_Base_Start_IT(&htim4); // Start TIM4 to limit the shooting frequency to 2 Hz
+	HAL_TIM_Base_Start_IT(&htim4); // Start TIM4 to limit the SHOOT and HYPER_SPACE frequency to 2 Hz
 	HAL_TIM_OC_Start_IT(&htim3,TIM_CHANNEL_1);
 	HAL_TIM_OC_Start_IT(&htim4,TIM_CHANNEL_1);
 	__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,34);
+	HAL_TIM_OC_Start_IT(&htim4,TIM_CHANNEL_2);
+	__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_2,34);
 
 	IKS01A3_MOTION_SENSOR_Init(1, MOTION_ACCELERO);
 	IKS01A3_MOTION_SENSOR_Enable(1, MOTION_ACCELERO);
 
 	/*Initialization of roll and pitch vectors at 0*/
-	Initialize_vectors();
+	Initialize_vector();
 	int32_t time_spent = 0;
 	int32_t begin = 0, end = 0;
   /* USER CODE END 2 */
@@ -135,59 +144,70 @@ int main(void)
   /* USER CODE BEGIN WHILE */
 	while (1) {
 
-		n_ovf = 0;
 		begin = __HAL_TIM_GetCounter(&htim3);
 
-		if(TIM3_FLAG) { // this flag is set 240 times a second
+		if (TIM3_FLAG) { // This flag is set with a frequency of 240 Hz
 			TIM3_FLAG = 0;
-			sprintf(printData,"\r\n");
-			if(!IKS01A3_MOTION_SENSOR_GetAxes(1, MOTION_ACCELERO, &axes)) { // if the sensor reading is successful
 
-				// pitch computation and filtering : RIGHT - LEFT (a and d button of the keyboard)
-				pitch = atan(-1 * axes.y / sqrt(pow(axes.x, 2) + pow(axes.z, 2))) * 12;
-				filtered_pitch = filtered_pitch + pitch - Update_pitch_vector(pitch);
-				if(filtered_pitch > 20) {
-					strcat(printData, "d");
-				}
-				else if(filtered_pitch < -20) {
-					strcat(printData, "a");
+			// Creation of the message to be sent
+			sprintf(message,"\r\n");
+
+			// Sensor reading
+			if(!IKS01A3_MOTION_SENSOR_GetAxes(1, MOTION_ACCELERO, &axes)) {
+
+				// Pitch computation and filtering
+				pitch = atan(-1 * axes.y / sqrt(pow(axes.x, 2) + pow(axes.z, 2))) * 60;
+				filtered_pitch = filtered_pitch + (pitch/(float)N) - (Update_pitch_vector(pitch)/(float)N);
+
+				// If the board is tilted right RIGHT_KEY is attached
+				if(filtered_pitch > 22) {
+					strcat(message, RIGHT_KEY);
 				}
 
-				// roll computation and filtering - TELEPORT (s button of the keyboard)
-				roll = atan(-1 * axes.x / sqrt(pow(axes.y, 2) + pow(axes.z, 2))) * 12;
-				filtered_roll = filtered_roll + roll - Update_roll_vector(roll);
-				if (filtered_roll < 0) {
-					if(TIM4_FLAG){
-						// if half a second has passed since the last fired shot
-						TIM4_FLAG = 0;
-						strcat(printData, "s");
-						__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,HAL_TIM_ReadCapturedValue(&htim3,TIM_CHANNEL_1)+TELEPORT_DELAY); // half a second needs to pass before the next shot
-					}
+				// If the board is tilted right LEFT_KEY is attached
+				else if(filtered_pitch < -22) {
+					strcat(message, LEFT_KEY);
+				}
+
+				// Roll computation
+				roll = atan(-1 * axes.x / sqrt(pow(axes.y, 2) + pow(axes.z, 2))) * 60;
+
+				// If the board is tilted forward and if the last SHOOT occurred less than 0.5 s ago HYPER_SPACE_KEY is attached
+				if (TIM4_FLAG1 && roll < 0) {
+					TIM4_FLAG1 = 0;
+					__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,HAL_TIM_ReadCapturedValue(&htim4,TIM_CHANNEL_1)+HS_DELAY);
+					strcat(message, HYPER_SPACE_KEY);
 				}
 			}
-			// blue button reading : FIRING (space button of the keyboard)
-			if (!HAL_GPIO_ReadPin(B1_GPIO_Port,B1_Pin)) {
-				strcat(printData, " ");
+
+			// Blue button reading
+			if (TIM4_FLAG2 && !HAL_GPIO_ReadPin(B1_GPIO_Port,B1_Pin)) {
+				TIM4_FLAG2 = 0;
+				__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_2,HAL_TIM_ReadCapturedValue(&htim4,TIM_CHANNEL_2)+SH_DELAY);
+				strcat(message, SHOOT_KEY);
 			}
 
-			// microphone reading : FORWARD (w button of the keyboard)
+			// If the Analog-to-Digital Conversion has concluded
 			if (EOC_FLAG == 1) {
-				if (HAL_ADC_GetValue(&hadc1) > MIC_MIN && HAL_ADC_GetValue(&hadc1) < MIC_MAX) {
-					if(HAL_ADC_GetValue(&hadc1)> 230) {
-						strcat(printData, "w");
-						EOC_FLAG = 0;
-					}
+				// Microphone reading
+				noise = HAL_ADC_GetValue(&hadc1);
+				// If someone is blowing on the microphone THRUST_KEY
+				if(noise > MIN_NOISE && noise < MAX_NOISE) {
+					strcat(message, THRUST_KEY);
+					EOC_FLAG = 0;
 				}
 			}
 		}
 
-		//transmits the letters corresponding to the buttons of the keyboard that have to be pressed
-		HAL_UART_Transmit_IT(&huart2,(uint8_t *)printData, strlen(printData));
-		if(correctlySentData) HAL_UART_Transmit_IT(&huart2, (uint8_t *)printData, strlen(printData));
-		correctlySentData = 0;
+		// Message transmission
+		if(correctlySentData) {
+			correctlySentData = 0;
+			HAL_UART_Transmit_IT(&huart2, (uint8_t *)message, strlen(message));
+		}
 
 		end = __HAL_TIM_GetCounter(&htim3);
 		time_spent = end - begin + n_ovf*65535;
+		n_ovf = 0;
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -399,6 +419,10 @@ static void MX_TIM4_Init(void)
   {
     Error_Handler();
   }
+  if (HAL_TIM_OC_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
+  {
+    Error_Handler();
+  }
   /* USER CODE BEGIN TIM4_Init 2 */
 
   /* USER CODE END TIM4_Init 2 */
@@ -486,12 +510,20 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
   * @retval none
   */
 void HAL_TIM_OC_DelayElapsedCallback (TIM_HandleTypeDef *htim){
+
 	if (htim == &htim3) {
-		TIM3_FLAG = 1; //240Hz flag to write the chars " ","a","d" in printData (see the while)
+		TIM3_FLAG = 1;
 	}
+
 	if (htim == &htim4) {
-		TIM4_FLAG = 1; //2400Hz or 2Hz (after having pressed "s") flag to write the char "s" in printData (see the while)
-		__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,HAL_TIM_ReadCapturedValue(&htim3,TIM_CHANNEL_1)+34);
+		if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1) {
+			TIM4_FLAG1 = 1;
+			__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,HAL_TIM_ReadCapturedValue(&htim4,TIM_CHANNEL_1)+34);
+		}
+		if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_2) {
+			TIM4_FLAG2 = 1;
+			__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_2,HAL_TIM_ReadCapturedValue(&htim4,TIM_CHANNEL_2)+34);
+		}
 	}
 }
 
@@ -502,7 +534,7 @@ void HAL_TIM_OC_DelayElapsedCallback (TIM_HandleTypeDef *htim){
   */
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc){
 	if(hadc == &hadc1){
-		EOC_FLAG = 1; //flag to communicate end of conversion of the ADC. This is used to write the char "w" in printData (see the while)
+		EOC_FLAG = 1;
 		__HAL_ADC_CLEAR_FLAG(&hadc1, ADC_FLAG_EOC);
 	}
 }
@@ -516,18 +548,15 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
 	correctlySentData = 1;
 }
 
-/*
-
 /**
   * @brief  This function initializes the vectors to zero
   * @param  none
   * @retval none
   */
-static void Initialize_vectors() {
+static void Initialize_vector() {
 	int i;
-	for(i = 0; i < LENGTH; i++) {
+	for(i = 0; i < N; i++) {
 		pitch_vector[i] = 0;
-		roll_vector[i] = 0;
 	}
 }
 
@@ -540,26 +569,10 @@ static void Initialize_vectors() {
 static int Update_pitch_vector(int data) {
 	int i;
 	int first_element = pitch_vector[0];
-	for (i = 0; i < LENGTH - 1; i++) {
+	for (i = 0; i < N - 1; i++) {
 		pitch_vector[i] = pitch_vector[i + 1];
 	}
-	pitch_vector[LENGTH - 1] = data;
-	return first_element;
-}
-
-/**
-  * @brief  This function pushes the new sample of pitch inside the vector with its
-  * 	    last n = LENGTH sample and returns the discarded value
-  * @param  data : new measurement of roll
-  * @retval first_element: first element of roll_vector
-  */
-static int Update_roll_vector(int data) {
-	int i;
-	int first_element = roll_vector[0];
-	for (i = 0; i < LENGTH - 1; i++) {
-		roll_vector[i] = roll_vector[i + 1];
-	}
-	roll_vector[LENGTH - 1] = data;
+	pitch_vector[N - 1] = data;
 	return first_element;
 }
 /* USER CODE END 4 */
@@ -594,4 +607,5 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
+/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
 
