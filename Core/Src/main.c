@@ -42,7 +42,7 @@
 #define LEFT_KEY "a"
 #define RIGHT_KEY "d"
 #define THRUST_KEY "w"
-#define SHOOT_KEY "o"
+#define SHOOT_KEY " "
 #define HYPER_SPACE_KEY "s"
 /* USER CODE END PD */
 
