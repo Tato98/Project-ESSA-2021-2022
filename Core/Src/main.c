@@ -114,14 +114,13 @@ int main(void)
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
     HAL_ADC_Start_IT(&hadc1);
-	HAL_TIM_Base_Start_IT(&htim3);
 	HAL_TIM_Base_Start_IT(&htim4);
 	HAL_TIM_OC_Start_IT(&htim3,TIM_CHANNEL_1);
-	__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_1,3499);
+	__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_1,349);
 	HAL_TIM_OC_Start_IT(&htim3,TIM_CHANNEL_2);
-	__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_1,3499);
+	__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_2,349);
 	HAL_TIM_OC_Start_IT(&htim4,TIM_CHANNEL_1);
-	__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,35);
+	__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,349);
 
 	IKS01A3_MOTION_SENSOR_Init(1, MOTION_ACCELERO);
 	IKS01A3_MOTION_SENSOR_Enable(1, MOTION_ACCELERO);
@@ -135,7 +134,6 @@ int main(void)
 		if(TIM3_FLAG){
 			TIM3_FLAG = 0;
 			if(!IKS01A3_MOTION_SENSOR_GetAxes(1, MOTION_ACCELERO, &axes)) {
-				sprintf(printData, " ");
 
 				// pitch computation and filtering : RIGHT - LEFT
 				pitch = atan(-1 * axes.y / sqrt(pow(axes.x, 2) + pow(axes.z, 2))) * 12;
@@ -328,7 +326,7 @@ static void MX_TIM3_Init(void)
   {
     Error_Handler();
   }
-  sConfigOC.OCMode = TIM_OCMODE_TIMING;
+  sConfigOC.OCMode = TIM_OCMODE_TOGGLE;
   sConfigOC.Pulse = 0;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
@@ -336,6 +334,7 @@ static void MX_TIM3_Init(void)
   {
     Error_Handler();
   }
+  sConfigOC.OCMode = TIM_OCMODE_TIMING;
   if (HAL_TIM_OC_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
   {
     Error_Handler();
@@ -473,7 +472,7 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	if (htim == &htim4) {
-		__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,35);
+		__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,349);
 	}
 }
 
@@ -483,7 +482,7 @@ void HAL_TIM_OC_DelayElapsedCallback (TIM_HandleTypeDef *htim){
 			TIM3_FLAG = 1;
 			}
 		}
-	if (htim == &htim4) {
+	else if (htim == &htim4) {
 		TIM4_FLAG = 1;
 	}
 }
