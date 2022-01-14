@@ -134,12 +134,14 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 	while (1) {
+
 		n_ovf = 0;
 		begin = __HAL_TIM_GetCounter(&htim3);
-		if(TIM3_FLAG){ // this flag sets 240 times a second
+
+		if(TIM3_FLAG) { // this flag sets 240 times a second
 			TIM3_FLAG = 0;
+			sprintf(printData,"\r\n");
 			if(!IKS01A3_MOTION_SENSOR_GetAxes(1, MOTION_ACCELERO, &axes)) { // if the sensor reading is successful
-				sprintf(printData,"\r\n");
 
 				// pitch computation and filtering : RIGHT - LEFT
 				pitch = atan(-1 * axes.y / sqrt(pow(axes.x, 2) + pow(axes.z, 2))) * 12;
@@ -173,9 +175,11 @@ int main(void)
 				strcat(printData, "w");
 			}
 		}
+
 		HAL_UART_Transmit_IT(&huart2,(uint8_t *)printData, strlen(printData));
 		if(correctlySentData) HAL_UART_Transmit_IT(&huart2, (uint8_t *)printData, strlen(printData));
 		correctlySentData = 0;
+
 		end = __HAL_TIM_GetCounter(&htim3);
 		time_spent = end - begin + n_ovf*65535;
     /* USER CODE END WHILE */
