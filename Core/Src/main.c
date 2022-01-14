@@ -113,7 +113,9 @@ int main(void)
   MX_TIM4_Init();
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
-    HAL_ADC_Start_IT(&hadc1); // Start Analog to Digital Converter
+
+    /*Hardware start*/
+  	HAL_ADC_Start_IT(&hadc1); // Start Analog to Digital Converter
 	HAL_TIM_Base_Start_IT(&htim3); // Start TIM3 to send a periodic interrupt of 240 Hz
 	HAL_TIM_Base_Start_IT(&htim4); // Start TIM4 to limit the shooting frequency to 2 Hz
 	HAL_TIM_OC_Start_IT(&htim3,TIM_CHANNEL_1);
@@ -123,7 +125,8 @@ int main(void)
 	IKS01A3_MOTION_SENSOR_Init(1, MOTION_ACCELERO);
 	IKS01A3_MOTION_SENSOR_Enable(1, MOTION_ACCELERO);
 
-	Initialize_vectors(); // reset the roll and pitch vectors
+	/*Initialization of roll and pitch vectors at 0*/
+	Initialize_vectors();
 	int32_t time_spent = 0;
 	int32_t begin = 0, end = 0;
   /* USER CODE END 2 */
@@ -477,28 +480,38 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	}
 }
 
+/**
+  * @brief  Timer OC callback override to set the flags that allow to capture signals and send letters at precise time instants
+  * @param  htim : it's the variable corresponding to the timers in use
+  * @retval none
+  */
 void HAL_TIM_OC_DelayElapsedCallback (TIM_HandleTypeDef *htim){
 	if (htim == &htim3) {
-		TIM3_FLAG = 1; //240Hz flag to send the chars "s","a","d" through COM port (see the while)
+		TIM3_FLAG = 1; //240Hz flag to write the chars " ","a","d" in printData (see the while)
 	}
 	if (htim == &htim4) {
-		TIM4_FLAG = 1; //2400Hz or 2Hz (after having pressed s) flag to send the char space through COM port (see the while)
+		TIM4_FLAG = 1; //2400Hz or 2Hz (after having pressed "s") flag to write the char "s" in printData (see the while)
 		__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,HAL_TIM_ReadCapturedValue(&htim3,TIM_CHANNEL_1)+34);
 	}
 }
 
 /**
-  * @brief  This ADC callback is used to capture the audio signal coming from the microphone
-  * @param  none
+  * @brief  ADC callback override to capture the audio signal coming from the microphone
+  * @param  hadc : it's the variable corresponding to the adc in use
   * @retval none
   */
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc){
 	if(hadc == &hadc1){
-		EOC_FLAG = 1; //flag to communicate end of conversion of the ADC. This is used to send the char "w" through COM port (see the while)
+		EOC_FLAG = 1; //flag to communicate end of conversion of the ADC. This is used to write the char "w" in printData (see the while)
 		__HAL_ADC_CLEAR_FLAG(&hadc1, ADC_FLAG_EOC);
 	}
 }
 
+/**
+  * @brief  UART callback override used to set the flag that allows to send strings through the COM port
+  * @param  huart : it's the variable corresponding to the adc in use
+  * @retval none
+  */
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
 	correctlySentData = 1;
 }
@@ -506,7 +519,7 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
 /*
 
 /**
-  * @brief  This function initialize the vectors to zero
+  * @brief  This function initializes the vectors to zero
   * @param  none
   * @retval none
   */
@@ -521,7 +534,7 @@ static void Initialize_vectors() {
 /**
   * @brief  This function pushes the new sample of pitch inside the vector with its
   * 	    last n = LENGTH sample and returns the discarded value
-  * @param  data: new measurement of pitch
+  * @param  data : new measurement of pitch
   * @retval first_element: first element of pitch_vector
   */
 static int Update_pitch_vector(int data) {
@@ -537,7 +550,7 @@ static int Update_pitch_vector(int data) {
 /**
   * @brief  This function pushes the new sample of pitch inside the vector with its
   * 	    last n = LENGTH sample and returns the discarded value
-  * @param  data: new measurement of roll
+  * @param  data : new measurement of roll
   * @retval first_element: first element of roll_vector
   */
 static int Update_roll_vector(int data) {
