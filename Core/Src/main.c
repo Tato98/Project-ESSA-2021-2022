@@ -191,7 +191,7 @@ int main(void)
 			if (EOC_FLAG == 1) {
 				// Microphone reading
 				noise = HAL_ADC_GetValue(&hadc1);
-				// If someone is blowing on the microphone THRUST_KEY
+				// If someone is blowing on the microphone THRUST_KEY is attached
 				if(noise > MIN_NOISE && noise < MAX_NOISE) {
 					strcat(message, THRUST_KEY);
 					EOC_FLAG = 0;
