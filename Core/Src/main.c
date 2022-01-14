@@ -127,9 +127,9 @@ int main(void)
 	HAL_TIM_Base_Start_IT(&htim4); // Start TIM4 to limit the SHOOT and HYPER_SPACE frequency to 2 Hz
 	HAL_TIM_OC_Start_IT(&htim3,TIM_CHANNEL_1);
 	HAL_TIM_OC_Start_IT(&htim4,TIM_CHANNEL_1);
-	__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,34);
+	__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,174);
 	HAL_TIM_OC_Start_IT(&htim4,TIM_CHANNEL_2);
-	__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_2,34);
+	__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_2,174);
 
 	IKS01A3_MOTION_SENSOR_Init(1, MOTION_ACCELERO);
 	IKS01A3_MOTION_SENSOR_Enable(1, MOTION_ACCELERO);
@@ -518,11 +518,11 @@ void HAL_TIM_OC_DelayElapsedCallback (TIM_HandleTypeDef *htim){
 	if (htim == &htim4) {
 		if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1) {
 			TIM4_FLAG1 = 1;
-			__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,HAL_TIM_ReadCapturedValue(&htim4,TIM_CHANNEL_1)+34);
+			__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,HAL_TIM_ReadCapturedValue(&htim4,TIM_CHANNEL_1)+174);
 		}
 		if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_2) {
 			TIM4_FLAG2 = 1;
-			__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_2,HAL_TIM_ReadCapturedValue(&htim4,TIM_CHANNEL_2)+34);
+			__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_2,HAL_TIM_ReadCapturedValue(&htim4,TIM_CHANNEL_2)+174);
 		}
 	}
 }
