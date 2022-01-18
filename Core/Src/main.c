@@ -60,7 +60,7 @@ TIM_HandleTypeDef htim4;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-volatile _Bool TIM3_FLAG = 0, TIM4_FLAG1 = 0, TIM4_FLAG2 = 0, EOC_FLAG = 0, correctlySentData = 1; // Flags for the interrupts
+volatile _Bool TIM3_FLAG = 0, TIM4_FLAG = 0, EOC_FLAG = 0, correctlySentData = 1; // Flags for the interrupts
 volatile int n_ovf = 0;
 int32_t pitch_vector[N]; // Vectors containing the last N samples of pitch and roll angles
 /* USER CODE END PV */
@@ -128,8 +128,6 @@ int main(void)
 	HAL_TIM_OC_Start_IT(&htim3,TIM_CHANNEL_1);
 	HAL_TIM_OC_Start_IT(&htim4,TIM_CHANNEL_1);
 	__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,174);
-	HAL_TIM_OC_Start_IT(&htim4,TIM_CHANNEL_2);
-	__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_2,174);
 
 	IKS01A3_MOTION_SENSOR_Init(1, MOTION_ACCELERO);
 	IKS01A3_MOTION_SENSOR_Enable(1, MOTION_ACCELERO);
@@ -173,17 +171,15 @@ int main(void)
 				roll = atan(-1 * axes.x / sqrt(pow(axes.y, 2) + pow(axes.z, 2))) * 60;
 
 				// If the board is tilted forward and if the last SHOOT occurred less than 0.5 s ago HYPER_SPACE_KEY is attached
-				if (TIM4_FLAG1 && roll < 0) {
-					TIM4_FLAG1 = 0;
+				if (TIM4_FLAG && roll < -22) {
+					TIM4_FLAG = 0;
 					__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,HAL_TIM_ReadCapturedValue(&htim4,TIM_CHANNEL_1)+HS_DELAY);
 					strcat(message, HYPER_SPACE_KEY);
 				}
 			}
 
 			// Blue button reading
-			if (TIM4_FLAG2 && !HAL_GPIO_ReadPin(B1_GPIO_Port,B1_Pin)) {
-				TIM4_FLAG2 = 0;
-				__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_2,HAL_TIM_ReadCapturedValue(&htim4,TIM_CHANNEL_2)+SH_DELAY);
+			if (!HAL_GPIO_ReadPin(B1_GPIO_Port,B1_Pin)) {
 				strcat(message, SHOOT_KEY);
 			}
 
@@ -517,12 +513,8 @@ void HAL_TIM_OC_DelayElapsedCallback (TIM_HandleTypeDef *htim){
 
 	if (htim == &htim4) {
 		if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1) {
-			TIM4_FLAG1 = 1;
+			TIM4_FLAG = 1;
 			__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,HAL_TIM_ReadCapturedValue(&htim4,TIM_CHANNEL_1)+174);
-		}
-		if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_2) {
-			TIM4_FLAG2 = 1;
-			__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_2,HAL_TIM_ReadCapturedValue(&htim4,TIM_CHANNEL_2)+174);
 		}
 	}
 }
