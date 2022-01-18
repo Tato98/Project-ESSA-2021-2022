@@ -158,20 +158,16 @@ int main(void)
 				filtered_pitch = filtered_pitch + (pitch/N) - (Update_pitch_vector(pitch)/N);
 
 				// If the board is tilted right RIGHT_KEY is attached
-				if(filtered_pitch > 20) {
-					strcat(message, RIGHT_KEY);
-				}
+				if(filtered_pitch > 20) strcat(message, RIGHT_KEY);
 
 				// If the board is tilted right LEFT_KEY is attached
-				else if(filtered_pitch < -20) {
-					strcat(message, LEFT_KEY);
-				}
+				else if(filtered_pitch < -20) strcat(message, LEFT_KEY);
 
 				// Roll computation
 				roll = atan(-1 * axes.x / sqrt(pow(axes.y, 2) + pow(axes.z, 2))) * 60;
 
 				// If the board is tilted forward and if the last SHOOT occurred less than 0.5 s ago HYPER_SPACE_KEY is attached
-				if (TIM4_FLAG && roll < -20) {
+				if (TIM4_FLAG && roll < -10) {
 					TIM4_FLAG = 0;
 					__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,HAL_TIM_ReadCapturedValue(&htim4,TIM_CHANNEL_1)+HS_DELAY);
 					strcat(message, HYPER_SPACE_KEY);
@@ -179,9 +175,7 @@ int main(void)
 			}
 
 			// Blue button reading
-			if (!HAL_GPIO_ReadPin(B1_GPIO_Port,B1_Pin)) {
-				strcat(message, SHOOT_KEY);
-			}
+			if (!HAL_GPIO_ReadPin(B1_GPIO_Port,B1_Pin)) strcat(message, SHOOT_KEY);
 
 			// If the Analog-to-Digital Conversion has concluded
 			if (EOC_FLAG == 1) {
