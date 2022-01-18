@@ -117,7 +117,7 @@ int main(void)
     /*Hardware start*/
   	HAL_ADC_Start_IT(&hadc1); // Start Analog to Digital Converter
 	HAL_TIM_Base_Start_IT(&htim3); // Start TIM3 to send a periodic interrupt of 240 Hz
-	HAL_TIM_Base_Start_IT(&htim4); // Start TIM4 to limit the shooting frequency to 2 Hz
+	HAL_TIM_Base_Start_IT(&htim4); // Start TIM4 to limit the teleport frequency to 2 Hz
 	HAL_TIM_OC_Start_IT(&htim3,TIM_CHANNEL_1);
 	HAL_TIM_OC_Start_IT(&htim4,TIM_CHANNEL_1);
 	__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,34);
