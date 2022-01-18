@@ -90,8 +90,8 @@ int main(void)
 {
   /* USER CODE BEGIN 1 */
 	IKS01A3_MOTION_SENSOR_Axes_t axes; // Accelerometer output
-	float pitch = 0, roll = 0; // Computed values of Pitch and Roll angles
-	float filtered_pitch = 0; // Values returned by the filtering action
+	int32_t pitch = 0, roll = 0; // Computed values of Pitch and Roll angles
+	int32_t filtered_pitch = 0; // Values returned by the filtering action
 	int noise = 0; // Microphone output
 	char message[32]; // Message to be sent
 
@@ -124,7 +124,7 @@ int main(void)
     /*Hardware start*/
   	HAL_ADC_Start_IT(&hadc1); // Start Analog to Digital Converter
 	HAL_TIM_Base_Start_IT(&htim3); // Start TIM3 to send a periodic interrupt of 240 Hz
-	HAL_TIM_Base_Start_IT(&htim4); // Start TIM4 to limit the SHOOT and HYPER_SPACE frequency to 2 Hz
+	HAL_TIM_Base_Start_IT(&htim4); // Start TIM4 to limit the SHOOT frequency to 2 Hz
 	HAL_TIM_OC_Start_IT(&htim3,TIM_CHANNEL_1);
 	HAL_TIM_OC_Start_IT(&htim4,TIM_CHANNEL_1);
 	__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,174);
@@ -155,15 +155,15 @@ int main(void)
 
 				// Pitch computation and filtering
 				pitch = atan(-1 * axes.y / sqrt(pow(axes.x, 2) + pow(axes.z, 2))) * 60;
-				filtered_pitch = filtered_pitch + (pitch/(float)N) - (Update_pitch_vector(pitch)/(float)N);
+				filtered_pitch = filtered_pitch + (pitch/N) - (Update_pitch_vector(pitch)/N);
 
 				// If the board is tilted right RIGHT_KEY is attached
-				if(filtered_pitch > 22) {
+				if(filtered_pitch > 20) {
 					strcat(message, RIGHT_KEY);
 				}
 
 				// If the board is tilted right LEFT_KEY is attached
-				else if(filtered_pitch < -22) {
+				else if(filtered_pitch < -20) {
 					strcat(message, LEFT_KEY);
 				}
 
@@ -171,7 +171,7 @@ int main(void)
 				roll = atan(-1 * axes.x / sqrt(pow(axes.y, 2) + pow(axes.z, 2))) * 60;
 
 				// If the board is tilted forward and if the last SHOOT occurred less than 0.5 s ago HYPER_SPACE_KEY is attached
-				if (TIM4_FLAG && roll < -22) {
+				if (TIM4_FLAG && roll < -20) {
 					TIM4_FLAG = 0;
 					__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,HAL_TIM_ReadCapturedValue(&htim4,TIM_CHANNEL_1)+HS_DELAY);
 					strcat(message, HYPER_SPACE_KEY);
