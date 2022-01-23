@@ -41,7 +41,7 @@
 #define LEFT_KEY "a"
 #define RIGHT_KEY "d"
 #define THRUST_KEY "w"
-#define SHOOT_KEY "o"
+#define SHOOT_KEY " "
 #define HYPER_SPACE_KEY "s"
 /* USER CODE END PD */
 
@@ -152,7 +152,7 @@ int main(void)
 			if(!IKS01A3_MOTION_SENSOR_GetAxes(1, MOTION_ACCELERO, &axes)) {
 
 				// Pitch computation and filtering
-				pitch = atan(-axes.y / (sqrt(pow(axes.x, 2) + pow(axes.z, 2)))) * 60;
+				pitch = atan(-(float)axes.y / (float)(sqrt(pow(axes.x, 2) + pow(axes.z, 2)))) * 60;
 				filtered_pitch = filtered_pitch + (pitch/N) - (Update_pitch_vector(pitch)/N);
 
 				// If the board is tilted right RIGHT_KEY is attached
@@ -162,7 +162,7 @@ int main(void)
 				else if(filtered_pitch < -20) strcat(message, LEFT_KEY);
 
 				// Roll computation
-				roll = -(float)axes.x / (float)axes.z * 60;
+				roll = atan(-(float)axes.x / (float)axes.z) * 60;
 
 				// If the board is tilted forward and if the last SHOOT occurred less than 0.5 s ago HYPER_SPACE_KEY is attached
 				if (roll < 0) {
