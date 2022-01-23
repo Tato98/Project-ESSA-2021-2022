@@ -37,12 +37,11 @@
 #define N 5 // Number of samples used by the moving average filter
 #define MIN_NOISE 127 // Microphone minimum level
 #define MAX_NOISE 255 // Microphone maximum level
-#define HS_DELAY 41999 // Delay between two instances of HYPER_SPACE
-#define SH_DELAY 8399 // Delay between two instances of SHOOT
+#define HS_DELAY 42000 // Delay between two instances of HYPER_SPACE
 #define LEFT_KEY "a"
 #define RIGHT_KEY "d"
 #define THRUST_KEY "w"
-#define SHOOT_KEY " "
+#define SHOOT_KEY "o"
 #define HYPER_SPACE_KEY "s"
 /* USER CODE END PD */
 
@@ -60,8 +59,8 @@ TIM_HandleTypeDef htim4;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-volatile _Bool TIM3_FLAG = 0, TIM4_FLAG = 0, EOC_FLAG = 0, correctlySentData = 1; // Flags for the interrupts
-volatile int n_ovf = 0;
+volatile _Bool TIM3_FLAG = 0, TIM4_FLAG = 1, EOC_FLAG = 0, BUTTON_FLAG, correctlySentData = 1; // Flags for the interrupts
+volatile int32_t n_ovf = 0;
 int32_t pitch_vector[N]; // Vectors containing the last N samples of pitch and roll angles
 /* USER CODE END PV */
 
@@ -92,7 +91,7 @@ int main(void)
 	IKS01A3_MOTION_SENSOR_Axes_t axes; // Accelerometer output
 	int32_t pitch = 0, roll = 0; // Computed values of Pitch and Roll angles
 	int32_t filtered_pitch = 0; // Values returned by the filtering action
-	int noise = 0; // Microphone output
+	int32_t noise = 0; // Microphone output
 	char message[32]; // Message to be sent
 
   /* USER CODE END 1 */
@@ -127,7 +126,6 @@ int main(void)
 	HAL_TIM_Base_Start_IT(&htim4); // Start TIM4 to limit the SHOOT frequency to 2 Hz
 	HAL_TIM_OC_Start_IT(&htim3,TIM_CHANNEL_1);
 	HAL_TIM_OC_Start_IT(&htim4,TIM_CHANNEL_1);
-	__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,174);
 
 	IKS01A3_MOTION_SENSOR_Init(1, MOTION_ACCELERO);
 	IKS01A3_MOTION_SENSOR_Enable(1, MOTION_ACCELERO);
@@ -154,7 +152,7 @@ int main(void)
 			if(!IKS01A3_MOTION_SENSOR_GetAxes(1, MOTION_ACCELERO, &axes)) {
 
 				// Pitch computation and filtering
-				pitch = atan(-1 * axes.y / sqrt(pow(axes.x, 2) + pow(axes.z, 2))) * 60;
+				pitch = atan(-axes.y / (sqrt(pow(axes.x, 2) + pow(axes.z, 2)))) * 60;
 				filtered_pitch = filtered_pitch + (pitch/N) - (Update_pitch_vector(pitch)/N);
 
 				// If the board is tilted right RIGHT_KEY is attached
@@ -164,18 +162,23 @@ int main(void)
 				else if(filtered_pitch < -20) strcat(message, LEFT_KEY);
 
 				// Roll computation
-				roll = atan(-1 * axes.x / sqrt(pow(axes.y, 2) + pow(axes.z, 2))) * 60;
+				roll = -(float)axes.x / (float)axes.z * 60;
 
 				// If the board is tilted forward and if the last SHOOT occurred less than 0.5 s ago HYPER_SPACE_KEY is attached
-				if (TIM4_FLAG && roll < -10) {
-					TIM4_FLAG = 0;
-					__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,HAL_TIM_ReadCapturedValue(&htim4,TIM_CHANNEL_1)+HS_DELAY);
-					strcat(message, HYPER_SPACE_KEY);
+				if (roll < 0) {
+					if(TIM4_FLAG) {
+						TIM4_FLAG = 0;
+						__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,HAL_TIM_ReadCapturedValue(&htim4,TIM_CHANNEL_1)+HS_DELAY);
+						strcat(message, HYPER_SPACE_KEY);
+					}
 				}
 			}
 
 			// Blue button reading
-			if (!HAL_GPIO_ReadPin(B1_GPIO_Port,B1_Pin)) strcat(message, SHOOT_KEY);
+			if (BUTTON_FLAG){
+				BUTTON_FLAG = 0;
+				strcat(message, SHOOT_KEY);
+			}
 
 			// If the Analog-to-Digital Conversion has concluded
 			if (EOC_FLAG == 1) {
@@ -196,8 +199,9 @@ int main(void)
 		}
 
 		end = __HAL_TIM_GetCounter(&htim3);
-		time_spent = end - begin + n_ovf*65535;
+		time_spent = end - begin + n_ovf*65536;
 		n_ovf = 0;
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -344,7 +348,7 @@ static void MX_TIM3_Init(void)
     Error_Handler();
   }
   sConfigOC.OCMode = TIM_OCMODE_TOGGLE;
-  sConfigOC.Pulse = 3499;
+  sConfigOC.Pulse = 3500;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
   if (HAL_TIM_OC_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
@@ -406,10 +410,6 @@ static void MX_TIM4_Init(void)
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
   if (HAL_TIM_OC_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_TIM_OC_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
   {
     Error_Handler();
   }
@@ -483,6 +483,10 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
 
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
+
 }
 
 /* USER CODE BEGIN 4 */
@@ -500,17 +504,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
   * @retval none
   */
 void HAL_TIM_OC_DelayElapsedCallback (TIM_HandleTypeDef *htim){
+	if (htim == &htim3) TIM3_FLAG = 1;
 
-	if (htim == &htim3) {
-		TIM3_FLAG = 1;
-	}
-
-	if (htim == &htim4) {
-		if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1) {
-			TIM4_FLAG = 1;
-			__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,HAL_TIM_ReadCapturedValue(&htim4,TIM_CHANNEL_1)+174);
-		}
-	}
+	if (htim == &htim4) TIM4_FLAG = 1;
 }
 
 /**
@@ -532,6 +528,10 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc){
   */
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
 	correctlySentData = 1;
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
+	if (GPIO_Pin == B1_Pin) BUTTON_FLAG = 1;
 }
 
 /**
@@ -593,5 +593,4 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
-/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
 
