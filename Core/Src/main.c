@@ -4,16 +4,10 @@
  * @file           : main.c
  * @brief          : Main program body
  ******************************************************************************
- * @attention
- *
- * <h2><center>&copy; Copyright (c) 2021 STMicroelectronics.
- * All rights reserved.</center></h2>
- *
- * This software component is licensed by ST under BSD 3-Clause license,
- * the "License"; You may not use this file except in compliance with the
- * License. You may obtain a copy of the License at:
- *                        opensource.org/licenses/BSD-3-Clause
- *
+ This is a Nucleo-F401RE project for the 2021-2022 Electronic Systems for Sensor
+ Acquisition course held by Professor Marco Vacca at Politecnico di Torino.
+ The aim of this project is to use the board, together with the X-NUCLEO-IKS01A3
+ motion sensor evaluation board to build a video-game controller.
  ******************************************************************************
  */
 /* USER CODE END Header */
@@ -59,9 +53,9 @@ TIM_HandleTypeDef htim4;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-volatile _Bool TIM3_FLAG = 0, TIM4_FLAG = 1, EOC_FLAG = 0, BUTTON_FLAG, correctlySentData = 1; // Flags for the interrupts
+volatile _Bool TIM3_FLAG = 0, TIM4_FLAG = 1, EOC_FLAG = 0, BUTTON_FLAG, correctlySentData = 1; // Flags
 volatile int32_t n_ovf = 0;
-int32_t pitch_vector[N]; // Vectors containing the last N samples of pitch and roll angles
+int32_t pitch_vector[N]; // Vector containing the last N samples of pitch angle
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -132,16 +126,11 @@ int main(void)
 
 	/*Initialization of roll and pitch vectors at 0*/
 	Initialize_vector();
-	int32_t time_spent = 0;
-	int32_t begin = 0, end = 0;
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 	while (1) {
-
-		begin = __HAL_TIM_GetCounter(&htim3);
-
 		if (TIM3_FLAG) { // This flag is set with a frequency of 240 Hz
 			TIM3_FLAG = 0;
 
@@ -197,11 +186,6 @@ int main(void)
 			correctlySentData = 0;
 			HAL_UART_Transmit_IT(&huart2, (uint8_t *)message, strlen(message));
 		}
-
-		end = __HAL_TIM_GetCounter(&htim3);
-		time_spent = end - begin + n_ovf*65536;
-		n_ovf = 0;
-
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -490,18 +474,10 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-
-/*Callback override of tim3, tim4, ADC and UART*/
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
-	if (htim == &htim3) {
-		n_ovf++;
-	}
-}
-
 /**
-  * @brief  Timer OC callback override to set the flags that allow to capture signals and send letters at precise time instants
-  * @param  htim : it's the variable corresponding to the timers in use
-  * @retval none
+  * @brief  Timer OC callback override to set the timing flags
+  * @param  htim in use
+  * @retval void
   */
 void HAL_TIM_OC_DelayElapsedCallback (TIM_HandleTypeDef *htim){
 	if (htim == &htim3) TIM3_FLAG = 1;
@@ -522,22 +498,27 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc){
 }
 
 /**
-  * @brief  UART callback override used to set the flag that allows to send strings through the COM port
-  * @param  huart : it's the variable corresponding to the adc in use
-  * @retval none
+  * @brief  UART callback override used to set the flag to sense a successful data transmission
+  * @param  huart port in use
+  * @retval void
   */
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
 	correctlySentData = 1;
 }
 
+/**
+  * @brief  GPIO callback override used to set the flag to sense the button pressing
+  * @param  GPIO_Pin in use
+  * @retval void
+  */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 	if (GPIO_Pin == B1_Pin) BUTTON_FLAG = 1;
 }
 
 /**
-  * @brief  This function initializes the vectors to zero
-  * @param  none
-  * @retval none
+  * @brief  This function initializes the pitch vector to zero
+  * @param  void
+  * @retval void
   */
 static void Initialize_vector() {
 	int i;
@@ -548,7 +529,7 @@ static void Initialize_vector() {
 
 /**
   * @brief  This function pushes the new sample of pitch inside the vector with its
-  * 	    last n = LENGTH sample and returns the discarded value
+  * 	    last N samples and returns the discarded value
   * @param  data : new measurement of pitch
   * @retval first_element: first element of pitch_vector
   */
