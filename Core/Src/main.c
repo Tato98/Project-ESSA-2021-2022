@@ -124,8 +124,7 @@ int main(void)
 	IKS01A3_MOTION_SENSOR_Init(1, MOTION_ACCELERO);
 	IKS01A3_MOTION_SENSOR_Enable(1, MOTION_ACCELERO);
 
-	/*Initialization of roll and pitch vectors at 0*/
-	Initialize_vector();
+	Initialize_vector(); //Initialization of roll and pitch vectors to 0
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -137,7 +136,7 @@ int main(void)
 			// Creation of the message to be sent
 			sprintf(message,"\r\n");
 
-			// Sensor reading
+			// Accelerometer reading
 			if(!IKS01A3_MOTION_SENSOR_GetAxes(1, MOTION_ACCELERO, &axes)) {
 
 				// Pitch computation and filtering
