@@ -29,8 +29,8 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define N 5 // Number of samples used by the moving average filter
-#define MIN_NOISE 127 // Microphone minimum level
-#define MAX_NOISE 255 // Microphone maximum level
+#define MIN_NOISE 220 // Microphone minimum level
+#define MAX_NOISE 256 // Microphone maximum level
 #define HS_DELAY 42000 // Delay between two instances of HYPER_SPACE
 #define LEFT_KEY "a"
 #define RIGHT_KEY "d"
